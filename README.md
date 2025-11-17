@@ -14,29 +14,6 @@
 支持高速流式输出、支持多轮对话、支持联网搜索、支持R1深度思考和静默深度思考，零配置部署，多路token支持。
 
 与ChatGPT接口完全兼容。
-
-还有以下十个free-api欢迎关注：
-
-Moonshot AI（Kimi.ai）接口转API [kimi-free-api](https://github.com/LLM-Red-Team/kimi-free-api)
-
-智谱AI (智谱清言) 接口转API [glm-free-api](https://github.com/LLM-Red-Team/glm-free-api)
-
-阶跃星辰 (跃问StepChat) 接口转API [step-free-api](https://github.com/LLM-Red-Team/step-free-api)
-
-阿里通义 (Qwen) 接口转API [qwen-free-api](https://github.com/LLM-Red-Team/qwen-free-api)
-
-秘塔AI (Metaso) 接口转API [metaso-free-api](https://github.com/LLM-Red-Team/metaso-free-api)
-
-字节跳动（豆包）接口转API [doubao-free-api](https://github.com/LLM-Red-Team/doubao-free-api)
-
-字节跳动（即梦AI）接口转API [jimeng-free-api](https://github.com/LLM-Red-Team/jimeng-free-api)
-
-讯飞星火（Spark）接口转API [spark-free-api](https://github.com/LLM-Red-Team/spark-free-api)
-
-MiniMax（海螺AI）接口转API [hailuo-free-api](https://github.com/LLM-Red-Team/hailuo-free-api)
-
-聆心智能 (Emohaa) 接口转API [emohaa-free-api](https://github.com/LLM-Red-Team/emohaa-free-api)
-
 ## 目录
 
 * [免责声明](#免责声明)
@@ -135,20 +112,10 @@ docker restart deepseek-free-api
 docker stop deepseek-free-api
 ```
 
-### Docker-compose部署
+### Docker-compose运行
 
-```yaml
-version: '3'
-
-services:
-  deepseek-free-api:
-    container_name: deepseek-free-api
-    image: vinlic/deepseek-free-api:latest
-    restart: always
-    ports:
-      - "8000:8000"
-    environment:
-      - TZ=Asia/Shanghai
+```shell
+docker compose up -d --build
 ```
 
 ### Render部署
