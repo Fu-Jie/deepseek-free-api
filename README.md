@@ -84,36 +84,8 @@
 |------|------|----------------------------------|
 |  DEEP_SEEK_CHAT_AUTHORIZATION   | 否    | 当配置了token 则使用token，未配置则需要在请求头中传递Authorization |
 
-## Docker部署
-
-拉取镜像并启动服务。
-
-```shell
-docker run -it -d --init --name deepseek-free-api -p 8000:8000 -e TZ=Asia/Shanghai  vinlic/deepseek-free-api:latest
-# 或将token配置在环境变量
-docker run -it -d --init --name deepseek-free-api -p 8000:8000 -e TZ=Asia/Shanghai -e DEEP_SEEK_CHAT_AUTHORIZATION=xxx  vinlic/deepseek-free-api:latest
-```
-
-查看服务实时日志
-
-```shell
-docker logs -f deepseek-free-api
-```
-
-重启服务
-
-```shell
-docker restart deepseek-free-api
-```
-
-停止服务
-
-```shell
-docker stop deepseek-free-api
-```
-
-### Docker-compose运行
-
+## Docker-compose运行
+clone 本仓库，运行下面的代码
 ```shell
 docker compose up -d --build
 ```
