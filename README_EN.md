@@ -2,10 +2,10 @@
 
 <span>[ <a href="README.md">中文</a> | English ]</span>
 
-[![](https://img.shields.io/github/license/llm-red-team/deepseek-free-api.svg)](LICENSE)
-![](https://img.shields.io/github/stars/llm-red-team/deepseek-free-api.svg)
-![](https://img.shields.io/github/forks/llm-red-team/deepseek-free-api.svg)
-![](https://img.shields.io/docker/pulls/vinlic/deepseek-free-api.svg)
+[![](https://img.shields.io/github/license/Fu-Jie/deepseek-free-api.svg)](LICENSE)
+![](https://img.shields.io/github/stars/Fu-Jie/deepseek-free-api.svg)
+![](https://img.shields.io/github/forks/Fu-Jie/deepseek-free-api.svg)
+![](https://img.shields.io/badge/Docker-ghcr.io/fu--jie/deepseek--free--api-blue)
 
 # Risk Warning
 
@@ -61,7 +61,6 @@ Emohaa API [emohaa-free-api](https://github.com/LLM-Red-Team/emohaa-free-api)
 - [Notes](#notes)
   - [Nginx Reverse Proxy Optimization](#nginx-reverse-proxy-optimization)
   - [Token Statistics](#token-statistics)
-- [Star History](#star-history)
   
 ## Disclaimer
 
@@ -350,7 +349,3 @@ keepalive_timeout 120;
 ### Token Statistics
 
 Since the inference side is not in deepseek-free-api, tokens cannot be counted and will be returned as a fixed number.
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=LLM-Red-Team/deepseek-free-api&type=Date)](https://star-history.com/#LLM-Red-Team/deepseek-free-api&Date)

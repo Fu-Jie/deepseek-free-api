@@ -4,9 +4,9 @@
 
 <span>[ 中文 | <a href="README_EN.md">English</a> ]</span>
 
-[![](https://img.shields.io/github/license/llm-red-team/deepseek-free-api.svg)](LICENSE)
-![](https://img.shields.io/github/stars/llm-red-team/deepseek-free-api.svg)
-![](https://img.shields.io/github/forks/llm-red-team/deepseek-free-api.svg)
+[![](https://img.shields.io/github/license/Fu-Jie/deepseek-free-api.svg)](LICENSE)
+![](https://img.shields.io/github/stars/Fu-Jie/deepseek-free-api.svg)
+![](https://img.shields.io/github/forks/Fu-Jie/deepseek-free-api.svg)
 ![](https://img.shields.io/badge/Docker-ghcr.io/fu--jie/deepseek--free--api-blue)
 
 # 支持我 ❤️
@@ -51,7 +51,6 @@
 - [注意事项](#注意事项)
   - [Nginx反代优化](#Nginx反代优化)
   - [Token统计](#Token统计)
-- [Star History](#star-history)
   
 ## 免责声明
 
@@ -272,7 +271,3 @@ keepalive_timeout 120;
 ### Token统计
 
 由于推理侧不在deepseek-free-api，因此token不可统计，将以固定数字返回。
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=LLM-Red-Team/deepseek-free-api&type=Date)](https://star-history.com/#LLM-Red-Team/deepseek-free-api&Date)
