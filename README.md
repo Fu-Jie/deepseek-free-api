@@ -11,9 +11,13 @@
 
 # 支持我 ❤️
 
-如果你觉得本项目有用，请务必给我的核心项目 **[Awesome Open WebUI](https://github.com/Fu-Jie/awesome-openwebui)** 点个 Star ⭐️！
+本项目是基于 DeepSeek 服务的 API 适配器，而更强大的 AI 体验离不开优秀的前端界面。
 
-（本项目点不点无所谓，主推上面那个 👆）
+如果你正在寻找如何更好地使用 Open WebUI，或者发现更多实用的 AI 插件与工具，欢迎访问我的核心项目：
+
+👉 **[Awesome Open WebUI](https://github.com/Fu-Jie/awesome-openwebui)**
+
+汇集了 Open WebUI 的最佳实践、插件、教程与资源。如果你觉得本项目解决了你的燃眉之急，不妨去那里点个 Star ⭐️ 支持一下！
 
 ## 最近更新
 
