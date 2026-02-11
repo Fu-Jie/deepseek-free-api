@@ -580,7 +580,7 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
         if (chunk.p) {
           if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'THINK')) {
             currentPath = 'thinking';
-          } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'TEXT')) {
+          } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'RESPONSE')) {
             currentPath = 'content';
           }
           logger.info(`[NON-STREAM PATH] => currentPath is now: ${currentPath}`);
@@ -699,7 +699,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
       if (chunk.p) {
         if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'THINK')) {
           currentPath = 'thinking';
-        } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'TEXT')) {
+        } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'RESPONSE')) {
           currentPath = 'content';
         }
         logger.info(`[STREAM PATH] => currentPath is now: ${currentPath}`);
