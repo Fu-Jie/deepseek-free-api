@@ -487,6 +487,8 @@ function messagesPrepare(messages: any[]): string {
     } else {
       text = String(message.content);
     }
+    // Filter out "FINISHED" from history
+    text = text.replace(/FINISHED/g, "").trim();
     return { role: message.role, text };
   });
 
@@ -565,6 +567,8 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
           currentPath = 'thinking';
         } else if (chunk.p === 'response/content') {
           currentPath = 'content';
+        } else if (chunk.p) {
+          currentPath = ''; // Reset for other paths like search_status
         }
 
         // Append value to the correct accumulator based on current path
@@ -665,7 +669,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
 
       if (chunk.p === 'response/thinking_content') currentPath = 'thinking';
       else if (chunk.p === 'response/content') currentPath = 'content';
-      else if (chunk.p === 'response/search_status') return;
+      else if (chunk.p) currentPath = ''; // Reset for search_status etc.
 
       if (chunk.p === 'response/search_results' && Array.isArray(chunk.v)) {
         if (chunk.o !== 'BATCH') { // Initial search results
