@@ -718,6 +718,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           logger.info(`[STREAM SEARCH] Captured ${chunk.v.length} search results from path: ${chunk.p}`);
         } else { // BATCH update for cite_index
           chunk.v.forEach((op: any) => {
+            logger.info(`[STREAM SEARCH BATCH] op.p="${op.p}" op.v="${op.v}"`);
             const match = op.p.match(/^(\d+)\/cite_index$/);
             if (match) {
               const index = parseInt(match[1], 10);
