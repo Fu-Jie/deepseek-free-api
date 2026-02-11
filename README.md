@@ -7,7 +7,7 @@
 [![](https://img.shields.io/github/license/llm-red-team/deepseek-free-api.svg)](LICENSE)
 ![](https://img.shields.io/github/stars/llm-red-team/deepseek-free-api.svg)
 ![](https://img.shields.io/github/forks/llm-red-team/deepseek-free-api.svg)
-![](https://img.shields.io/docker/pulls/vinlic/deepseek-free-api.svg)
+![](https://img.shields.io/badge/Docker-ghcr.io/fu--jie/deepseek--free--api-blue)
 
 # 支持我 ❤️
 
@@ -105,28 +105,11 @@
 
 ## Docker部署 (推荐)
 
-由于原版镜像已不再更新且包含 Bug，**请务必使用以下方式构建使用**，以确保包含最新的修复代码。
+我们提供自动构建的 Docker 镜像，支持 `x86_64` 和 `ARM64` 架构。
 
 ### Docker-compose (推荐)
 
-1. 克隆本仓库：
-
-```shell
-git clone https://github.com/Fu-Jie/deepseek-free-api.git
-cd deepseek-free-api
-```
-
-1. 使用 docker-compose 构建并启动：
-
-```shell
-docker compose up -d --build
-```
-
-*注意：必须加上 `--build` 参数以确保使用本地最新的修复代码，而不是拉取旧的远程镜像。*
-
-### Docker-compose.yml 示例
-
-如果您需要手动创建 `docker-compose.yml`，请使用 `build: .` 而非 `image`:
+创建一个 `docker-compose.yml` 文件：
 
 ```yaml
 version: '3'
@@ -134,12 +117,24 @@ version: '3'
 services:
   deepseek-free-api:
     container_name: deepseek-free-api
-    build: .  # 使用本地代码构建，确保修复生效
+    image: ghcr.io/fu-jie/deepseek-free-api:latest
     restart: always
     ports:
       - "8000:8000"
     environment:
       - TZ=Asia/Shanghai
+```
+
+启动服务：
+
+```shell
+docker compose up -d
+```
+
+### Docker Run 命令行
+
+```shell
+docker run -it -d --init --name deepseek-free-api -p 8000:8000 -e TZ=Asia/Shanghai ghcr.io/fu-jie/deepseek-free-api:latest
 ```
 
 ## 其他部署方式
