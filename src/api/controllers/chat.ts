@@ -572,28 +572,22 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
         // Update current path if specified
         // Update current path if specified (DeepSeek uses fragments for thinking)
         if (chunk.p) {
-          if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && (chunk.p.includes('content') || (chunk.v && chunk.v[0] && chunk.v[0].type === 'THINK')))) {
+          if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'THINK')) {
             currentPath = 'thinking';
-          } else if (chunk.p.includes('response/content')) {
+          } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'TEXT')) {
             currentPath = 'content';
-          } else if (chunk.p === 'response/status') {
-            // Do not override currentPath with status, as it's metadata
-          } else {
-            // For other paths, we might want to stay in current mode if it's transient
           }
         }
 
         // Use currentPath as fallback for chunks without 'p'
-        const targetPath = chunk.p || currentPath;
+        // Use currentPath as fallback for chunks without 'p'
+        // Use currentPath as fallback for chunks without 'p' or for transient fragment content paths
         if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED') {
-          if (targetPath.includes('thinking') || targetPath.includes('fragments')) {
+          if (currentPath === 'thinking') {
             accumulatedThinkingContent += chunk.v;
-          } else if (targetPath.includes('response/content') || targetPath === 'content') {
-            accumulatedContent += chunk.v;
           } else {
-            // Stronger sticky logic: if we are in thinking mode, stick to it
-            if (currentPath === 'thinking') accumulatedThinkingContent += chunk.v;
-            else accumulatedContent += chunk.v;
+            // Default to content for anything else
+            accumulatedContent += chunk.v;
           }
         }
       } catch (err) {
@@ -689,9 +683,9 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
       if (chunk.response_message_id && !messageId) messageId = chunk.response_message_id;
 
       if (chunk.p) {
-        if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && (chunk.p.includes('content') || (chunk.v && chunk.v[0] && chunk.v[0].type === 'THINK')))) {
+        if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v.length > 0 && chunk.v[0].type === 'THINK')) {
           currentPath = 'thinking';
-        } else if (chunk.p.includes('response/content')) {
+        } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v.length > 0 && chunk.v[0].type === 'TEXT')) {
           currentPath = 'content';
         }
       }
@@ -730,9 +724,12 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           : chunk.v.replace(/\[citation:(\d+)\]/g, '[$1]');
 
         // Use sticky path logic for stream
-        const targetPath = chunk.p || currentPath;
-
-        if (targetPath.includes('thinking') || targetPath.includes('fragments')) {
+        // Only classify as thinking if currentPath is explicitly 'thinking' or path contains 'thinking'/'THINK'
+        // Avoid broad 'fragments' check here which led to capturing all content
+        if (chunk.p && chunk.p.includes('thinking')) {
+          // Process based on current identified path type
+        }
+        if (currentPath === 'thinking') {
           if (isSilentModel) return;
           if (isFoldModel) {
             if (!thinkingStarted) {
@@ -744,18 +741,15 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           } else {
             delta.reasoning_content = content;
           }
-        } else if (targetPath.includes('response/content') || targetPath === 'content') {
+        } else {
+          // Normal content mode
           if (isFoldModel && thinkingStarted) {
             delta.content = `</pre></details>${content}`;
             thinkingStarted = false;
           } else {
             delta.content = content;
           }
-        } else {
-          // Fallback: Treat as content if not explicitly a thinking path
-          delta.content = content;
         }
-
         transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: null }], created })}\n\n`);
       }
     } catch (err) {
