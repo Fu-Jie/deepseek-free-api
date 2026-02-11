@@ -1,4 +1,4 @@
-# DeepSeek V3/R1 Free 服务 (持续维护版)
+# DeepSeek Free API 服务 (持续维护版)
 
 > **⚠️ 说明**: 原项目 `llm-red-team/deepseek-free-api` 已归档停止维护。本项目为 **接替维护版本**，旨在修复因 DeepSeek 官网更新导致的协议不兼容问题（如 `ERR_INVALID_CHAR` 和 `FINISHED` 状态码泄露），确保服务持续可用。
 
