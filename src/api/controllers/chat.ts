@@ -570,22 +570,24 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
         }
 
         // Update current path if specified
-        if (chunk.p === 'response/thinking_content') {
+        // Update current path if specified (using includes for robust detection)
+        if (chunk.p && chunk.p.includes('thinking_content')) {
           currentPath = 'thinking';
-        } else if (chunk.p === 'response/content') {
+        } else if (chunk.p && chunk.p.includes('response/content')) {
           currentPath = 'content';
         }
 
         // Append value to the correct accumulator based on current path
         const targetPath = chunk.p || currentPath;
         if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED') {
-          if (targetPath === 'response/thinking_content' || targetPath === 'thinking') {
+          if (targetPath.includes('thinking_content') || targetPath === 'thinking') {
             accumulatedThinkingContent += chunk.v;
-          } else if (targetPath === 'response/content' || targetPath === 'content') {
+          } else if (targetPath.includes('response/content') || targetPath === 'content') {
             accumulatedContent += chunk.v;
           } else {
-            // Fallback: If we have a string value and it's not FINISHED, treat as content
-            accumulatedContent += chunk.v;
+            // Fallback: If current path is identified, stick to it
+            if (currentPath === 'thinking') accumulatedThinkingContent += chunk.v;
+            else accumulatedContent += chunk.v;
           }
         }
       } catch (err) {
@@ -680,8 +682,8 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
 
       if (chunk.response_message_id && !messageId) messageId = chunk.response_message_id;
 
-      if (chunk.p === 'response/thinking_content') currentPath = 'thinking';
-      else if (chunk.p === 'response/content') currentPath = 'content';
+      if (chunk.p && chunk.p.includes('thinking_content')) currentPath = 'thinking';
+      else if (chunk.p && chunk.p.includes('response/content')) currentPath = 'content';
 
       // Debug log for troubleshooting stream content
       if (typeof chunk.v === 'string' && chunk.v.includes('FINISHED')) {
