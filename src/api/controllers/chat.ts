@@ -564,6 +564,11 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
           messageId = chunk.response_message_id;
         }
 
+        // Debug log for troubleshooting FINISHED source
+        if (typeof chunk.v === 'string' && chunk.v.includes('FINISHED')) {
+          logger.info(`[DEBUG] Received FINISHED chunk. Path: ${chunk.p}, Value: ${chunk.v}, CurrentPath: ${currentPath}`);
+        }
+
         // Update current path if specified
         if (chunk.p === 'response/thinking_content') {
           currentPath = 'thinking';
@@ -594,7 +599,11 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
     stream.on("data", (buffer: Buffer) => parser.feed(buffer.toString()));
     stream.once("error", (err) => reject(err));
     stream.once("close", () => {
-      logger.info(`[NON-STREAM] Stream closed. Accumulated content length: ${accumulatedContent.length}`);
+      logger.info(`[NON-STREAM] Stream closed. Content len: ${accumulatedContent.length}, Thinking len: ${accumulatedThinkingContent.length}`);
+      // Debug: Log if FINISHED is ending up in content
+      if (accumulatedContent.endsWith('FINISHED')) {
+        logger.warn(`[NON-STREAM] WARNING: Content ends with FINISHED! Accumulated: ${accumulatedContent.slice(-20)}`);
+      }
       const finalResponse = {
         id: `${refConvId}@${messageId}`,
         model,
