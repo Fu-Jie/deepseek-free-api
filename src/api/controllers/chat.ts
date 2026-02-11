@@ -645,7 +645,11 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
   const { createParser } = await import("eventsource-parser");
   const isThinkingModel = model.includes('think') || model.includes('r1');
   const isSilentModel = model.includes('silent');
-  const isFoldModel = (model.includes('fold') || model.includes('search')) && !isThinkingModel;
+  let isFoldModel = (model.includes('fold') || model.includes('search')) && !isThinkingModel;
+  // Force fold mode for all R1/reasoner models to ensure compatibility
+  if (model.includes('deepseek-r1') || model.includes('deepseek-reasoner')) {
+    isFoldModel = true;
+  }
   const isSearchSilentModel = model.includes('search-silent');
   logger.info(`[STREAM] Model: ${model}, isThinking: ${isThinkingModel}, isSilent: ${isSilentModel}, isFold: ${isFoldModel}, isSearchSilent: ${isSearchSilentModel}`);
 
@@ -716,10 +720,11 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         if (chunk.o !== 'BATCH') { // Initial search results
           searchResults = chunk.v;
           logger.info(`[STREAM SEARCH] Captured ${chunk.v.length} search results from path: ${chunk.p}`);
-          // Dump first result's full structure and all results' keys for debugging
+          // Dump ALL results' full structure for debugging missing citations
           if (chunk.v.length > 0) {
-            logger.info(`[STREAM SEARCH DUMP] First result: ${JSON.stringify(chunk.v[0])}`);
-            logger.info(`[STREAM SEARCH DUMP] All keys: ${chunk.v.map((r: any, i: number) => `[${i}]: ${Object.keys(r).join(',')}`).join(' | ')}`);
+            chunk.v.forEach((r: any, i: number) => {
+              logger.info(`[STREAM SEARCH DUMP] Result[${i}]: ${JSON.stringify(r)}`);
+            });
           }
         } else { // BATCH update for search results (title, url, etc.)
           chunk.v.forEach((op: any) => {
