@@ -716,6 +716,11 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         if (chunk.o !== 'BATCH') { // Initial search results
           searchResults = chunk.v;
           logger.info(`[STREAM SEARCH] Captured ${chunk.v.length} search results from path: ${chunk.p}`);
+          // Dump first result's full structure and all results' keys for debugging
+          if (chunk.v.length > 0) {
+            logger.info(`[STREAM SEARCH DUMP] First result: ${JSON.stringify(chunk.v[0])}`);
+            logger.info(`[STREAM SEARCH DUMP] All keys: ${chunk.v.map((r: any, i: number) => `[${i}]: ${Object.keys(r).join(',')}`).join(' | ')}`);
+          }
         } else { // BATCH update for search results (title, url, etc.)
           chunk.v.forEach((op: any) => {
             logger.info(`[STREAM SEARCH BATCH] op.p="${op.p}" op.v="${op.v}"`);
