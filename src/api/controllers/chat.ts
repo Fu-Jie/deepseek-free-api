@@ -487,6 +487,10 @@ function messagesPrepare(messages: any[]): string {
     } else {
       text = String(message.content);
     }
+    // Safely remove "FINISHED" and similar artifacts from the end of history messages
+    if (text.endsWith('FINISHED')) {
+      text = text.substring(0, text.length - 8).trim();
+    }
     return { role: message.role, text };
   });
 
