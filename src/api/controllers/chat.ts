@@ -812,7 +812,8 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           .map(r => `[${r.cite_index}]: [${r.title}](${r.url})`)
           .join('\n');
         if (citations) {
-          const citationContent = `\n\n${citations}`;
+          logger.info(`[DEBUG] Final citations:\n${citations}`);
+          const citationContent = `\n\n**Citations:**\n${citations}`;
           transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: citationContent }, finish_reason: null }], created })}\n\n`);
         }
       }
