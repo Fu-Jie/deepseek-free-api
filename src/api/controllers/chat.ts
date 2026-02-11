@@ -736,9 +736,9 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         return; // We've handled this event.
       }
 
-      // Only process string values from content paths; ignore metadata like conversation_mode
-      const isContentPath = chunk.p && (chunk.p.includes('/content') || chunk.p.includes('thinking_content'));
-      if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED' && isContentPath) {
+      // Process content only from recognized content paths (or sticky chunks without explicit path)
+      const isContentPath = !chunk.p || chunk.p.includes('content') || chunk.p.includes('thought');
+      if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED' && isContentPath && chunk.v !== 'SEARCH') {
         const delta: { role?: string, content?: string, reasoning_content?: string } = {};
         if (isFirstChunk) {
           delta.role = "assistant";
