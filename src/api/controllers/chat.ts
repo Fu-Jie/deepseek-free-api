@@ -795,6 +795,23 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
   });
   stream.once("close", () => {
     if (!transStream.closed) {
+      // Close fold tag if thinking was in progress
+      if (isFoldModel && thinkingStarted) {
+        transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "</pre></details>" }, finish_reason: null }], created })}\n\n`);
+      }
+      // Append search citations
+      if (searchResults.length > 0 && !isSearchSilentModel) {
+        const citations = searchResults
+          .filter(r => r.cite_index)
+          .sort((a, b) => a.cite_index - b.cite_index)
+          .map(r => `[${r.cite_index}]: [${r.title}](${r.url})`)
+          .join('\n');
+        if (citations) {
+          const citationContent = `\n\n${citations}`;
+          transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: citationContent }, finish_reason: null }], created })}\n\n`);
+        }
+      }
+      transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], created })}\n\n`);
       transStream.end("data: [DONE]\n\n");
       endCallback && endCallback();
     }
