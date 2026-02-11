@@ -41,7 +41,7 @@ const FAKE_HEADERS = {
   "X-Client-Platform": "web",
   "X-Client-Version": "1.0.0-always",
 };
-const EVENT_COMMIT_ID = '41e9c7b1';
+let EVENT_COMMIT_ID = '41e9c7b1';
 // 当前IP地址
 let ipAddress = '';
 // access_token映射
@@ -717,7 +717,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         } else {
           delta.content = content;
         }
-        
+
         transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: null }], created })}\n\n`);
       }
     } catch (err) {
@@ -1184,7 +1184,7 @@ async function getThinkingQuota(refreshToken: string) {
 async function fetchAppVersion(): Promise<string> {
   try {
     logger.info('自动获取版本号');
-    const response = await axios.get('https://chat.deepseek.com/version.txt', {
+    const response = await axios.get('https://chat.deepseek.com/', {
       timeout: 5000,
       validateStatus: () => true,
       headers: {
@@ -1193,14 +1193,19 @@ async function fetchAppVersion(): Promise<string> {
       }
     });
     if (response.status === 200 && response.data) {
-      const version = response.data.toString().trim();
-      logger.info(`获取版本号: ${version}`);
-      return version;
+      const html = response.data.toString();
+      const versionMatch = html.match(/<meta name="commit-id" content="(.*?)">/);
+      if (versionMatch && versionMatch[1]) {
+        const version = versionMatch[1];
+        logger.info(`获取版本号: ${version}`);
+        EVENT_COMMIT_ID = version;
+        return version;
+      }
     }
   } catch (err) {
     logger.error('获取版本号失败:', err);
   }
-  return "20241018.0";
+  return "20241129.1";
 }
 
 function autoUpdateAppVersion() {
