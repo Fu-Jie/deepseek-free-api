@@ -13,6 +13,12 @@
 
 Supports high-speed streaming output, multi-turn conversation, internet search, R1 deep thinking, and silent deep thinking. Zero-configuration deployment and multi-token support.
 
+## Recent Updates
+
+- **Compatibility Fix** (2025-02-11): Resolved the `ERR_INVALID_CHAR` error triggered by DeepSeek website architecture changes.
+- **Output Purification**: Fixed the `FINISHED` internal status code leakage. Implemented strict path validation to guarantee that only actual model content is appended to your responses.
+- **History Sanitization**: Automatically strips residual `FINISHED` artifacts from older message histories to maintain clean context.
+
 Fully compatible with ChatGPT interface.
 
 Here are ten more free APIs for your attention:
@@ -39,27 +45,27 @@ Emohaa API [emohaa-free-api](https://github.com/LLM-Red-Team/emohaa-free-api)
 
 ## Table of Contents
 
-* [Disclaimer](#disclaimer)
-* [Effect Examples](#effect-examples)
-* [Preparation](#preparation)
-  * [Multi-account Access](#multi-account-access)
-* [Docker Deployment](#docker-deployment)
-  * [Docker-compose Deployment](#docker-compose-deployment)
-* [Render Deployment](#render-deployment)
-* [Vercel Deployment](#vercel-deployment)
-* [Native Deployment](#native-deployment)
-* [Recommended Clients](#recommended-clients)
-* [API List](#api-list)
-  * [Chat Completion](#chat-completion)
-  * [userToken Live Check](#usertoken-live-check)
-* [Notes](#notes)
-  * [Nginx Reverse Proxy Optimization](#nginx-reverse-proxy-optimization)
-  * [Token Statistics](#token-statistics)
-* [Star History](#star-history)
+- [Disclaimer](#disclaimer)
+- [Effect Examples](#effect-examples)
+- [Preparation](#preparation)
+  - [Multi-account Access](#multi-account-access)
+- [Docker Deployment](#docker-deployment)
+  - [Docker-compose Deployment](#docker-compose-deployment)
+- [Render Deployment](#render-deployment)
+- [Vercel Deployment](#vercel-deployment)
+- [Native Deployment](#native-deployment)
+- [Recommended Clients](#recommended-clients)
+- [API List](#api-list)
+  - [Chat Completion](#chat-completion)
+  - [userToken Live Check](#usertoken-live-check)
+- [Notes](#notes)
+  - [Nginx Reverse Proxy Optimization](#nginx-reverse-proxy-optimization)
+  - [Token Statistics](#token-statistics)
+- [Star History](#star-history)
   
 ## Disclaimer
 
-**Reverse-engineered APIs are unstable. It is recommended to use the official DeepSeek API at https://platform.deepseek.com/ to avoid the risk of being banned.**
+**Reverse-engineered APIs are unstable. It is recommended to use the official DeepSeek API at <https://platform.deepseek.com/> to avoid the risk of being banned.**
 
 **This organization and individuals do not accept any donations or transactions. This project is purely for research and learning purposes!**
 
@@ -249,6 +255,7 @@ Authorization: Bearer [userToken value]
 ```
 
 Request data:
+
 ```json
 {
     // model name
@@ -274,6 +281,7 @@ Request data:
 ```
 
 Response data:
+
 ```json
 {
     "id": "50207e56-747e-4800-9068-c6fd618374ee@2",
@@ -305,6 +313,7 @@ Check if the userToken is alive. If alive, live is true; otherwise, it is false.
 **POST /token/check**
 
 Request data:
+
 ```json
 {
     "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9..."
@@ -312,6 +321,7 @@ Request data:
 ```
 
 Response data:
+
 ```json
 {
     "live": true

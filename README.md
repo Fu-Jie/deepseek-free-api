@@ -13,6 +13,12 @@
 
 （本项目点不点无所谓，主推上面那个 👆）
 
+## 最近更新
+
+- **兼容性修复** (2025-02-11): 修复了因 DeepSeek 官网更新导致的 `X-App-Version` 获取异常（`ERR_INVALID_CHAR`）的问题。
+- **响应净化**: 彻底解决了响应中偶现 `FINISHED` 状态码泄露到正文的问题，现在通过严格的路径校验（Strict Path Validation）确保输出内容的纯净。
+- **历史记录修复**: 自动清理历史对话中可能存在的 `FINISHED` 脏数据，防止上下文污染。
+
 # 风险警告
 
 ## **近期，我们发现部分自媒体引导用户将本仓库源码或镜像部署至非个人使用渠道，并公开提供服务。此行为可能违反了DeepSeek的[《用户协议》](https://chat.deepseek.com/downloads/DeepSeek%20Terms%20of%20Use.html)。我们特此提醒，请相关自媒体和个人立即停止此类不当行为。若持续违规，DeepSeek官方将保留依法追究其法律责任的权利。**
@@ -23,27 +29,27 @@
 
 ## 目录
 
-* [免责声明](#免责声明)
-* [效果示例](#效果示例)
-* [接入准备](#接入准备)
-  * [多账号接入](#多账号接入)
-* [Docker部署](#Docker部署)
-  * [Docker-compose部署](#Docker-compose部署)
-* [Render部署](#Render部署)
-* [Vercel部署](#Vercel部署)
-* [原生部署](#原生部署)
-* [推荐使用客户端](#推荐使用客户端)
-* [接口列表](#接口列表)
-  * [对话补全](#对话补全)
-  * [userToken存活检测](#userToken存活检测)
-* [注意事项](#注意事项)
-  * [Nginx反代优化](#Nginx反代优化)
-  * [Token统计](#Token统计)
-* [Star History](#star-history)
+- [免责声明](#免责声明)
+- [效果示例](#效果示例)
+- [接入准备](#接入准备)
+  - [多账号接入](#多账号接入)
+- [Docker部署](#Docker部署)
+  - [Docker-compose部署](#Docker-compose部署)
+- [Render部署](#Render部署)
+- [Vercel部署](#Vercel部署)
+- [原生部署](#原生部署)
+- [推荐使用客户端](#推荐使用客户端)
+- [接口列表](#接口列表)
+  - [对话补全](#对话补全)
+  - [userToken存活检测](#userToken存活检测)
+- [注意事项](#注意事项)
+  - [Nginx反代优化](#Nginx反代优化)
+  - [Token统计](#Token统计)
+- [Star History](#star-history)
   
 ## 免责声明
 
-**逆向API是不稳定的，建议前往DeepSeek官方 https://platform.deepseek.com/ 付费使用API，避免封禁的风险。**
+**逆向API是不稳定的，建议前往DeepSeek官方 <https://platform.deepseek.com/> 付费使用API，避免封禁的风险。**
 
 **本组织和个人不接受任何资金捐助和交易，此项目是纯粹研究交流学习性质！**
 
@@ -92,7 +98,9 @@
 |  DEEP_SEEK_CHAT_AUTHORIZATION   | 否    | 当配置了token 则使用token，未配置则需要在请求头中传递Authorization |
 
 ## Docker-compose运行
+
 clone 本仓库，运行下面的代码
+
 ```shell
 docker compose up -d --build
 ```
@@ -195,6 +203,7 @@ Authorization: Bearer [userToken value]
 ```
 
 请求数据：
+
 ```json
 {
     // model名称
@@ -220,6 +229,7 @@ Authorization: Bearer [userToken value]
 ```
 
 响应数据：
+
 ```json
 {
     "id": "50207e56-747e-4800-9068-c6fd618374ee@2",
@@ -251,6 +261,7 @@ Authorization: Bearer [userToken value]
 **POST /token/check**
 
 请求数据：
+
 ```json
 {
     "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9..."
@@ -258,6 +269,7 @@ Authorization: Bearer [userToken value]
 ```
 
 响应数据：
+
 ```json
 {
     "live": true
