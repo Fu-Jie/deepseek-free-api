@@ -645,11 +645,8 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
   const { createParser } = await import("eventsource-parser");
   const isThinkingModel = model.includes('think') || model.includes('r1');
   const isSilentModel = model.includes('silent');
-  let isFoldModel = (model.includes('fold') || model.includes('search')) && !isThinkingModel;
-  // Force fold mode for all R1/reasoner models to ensure compatibility
-  if (model.includes('deepseek-r1') || model.includes('deepseek-reasoner')) {
-    isFoldModel = true;
-  }
+  const isFoldModel = (model.includes('fold') || model.includes('search')) && !isThinkingModel;
+
   const isSearchSilentModel = model.includes('search-silent');
   logger.info(`[STREAM] Model: ${model}, isThinking: ${isThinkingModel}, isSilent: ${isSilentModel}, isFold: ${isFoldModel}, isSearchSilent: ${isSearchSilentModel}`);
 
@@ -720,15 +717,8 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         if (chunk.o !== 'BATCH') { // Initial search results
           searchResults = chunk.v;
           logger.info(`[STREAM SEARCH] Captured ${chunk.v.length} search results from path: ${chunk.p}`);
-          // Dump ALL results' full structure for debugging missing citations
-          if (chunk.v.length > 0) {
-            chunk.v.forEach((r: any, i: number) => {
-              logger.info(`[STREAM SEARCH DUMP] Result[${i}]: ${JSON.stringify(r)}`);
-            });
-          }
         } else { // BATCH update for search results (title, url, etc.)
           chunk.v.forEach((op: any) => {
-            logger.info(`[STREAM SEARCH BATCH] op.p="${op.p}" op.v="${op.v}"`);
             // Match any update ending in index/key (e.g., .../0/title, .../0/url, .../1/cite_index)
             const match = op.p.match(/\/(\d+)\/(\w+)$/);
             if (match) {
@@ -736,7 +726,6 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
               const key = match[2];
               if (searchResults[index]) {
                 searchResults[index][key] = op.v;
-                logger.info(`[STREAM SEARCH UPDATE] Updated result[${index}].${key}`);
               } else {
                 // Initialize if not exists (though typically initial array sets length)
                 searchResults[index] = { [key]: op.v };
@@ -769,7 +758,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           if (isFoldModel) {
             if (!thinkingStarted) {
               thinkingStarted = true;
-              delta.content = `<details open><summary>思考过程</summary><pre>${content}`;
+              delta.content = `<details><summary>思考过程</summary>${content}`;
             } else {
               delta.content = content;
             }
@@ -779,7 +768,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         } else {
           // Normal content mode
           if (isFoldModel && thinkingStarted) {
-            delta.content = `</pre></details>${content}`;
+            delta.content = `</details>${content}`;
             thinkingStarted = false;
           } else {
             delta.content = content;
@@ -802,7 +791,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
     if (!transStream.closed) {
       // Close fold tag if thinking was in progress
       if (isFoldModel && thinkingStarted) {
-        transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "</pre></details>" }, finish_reason: null }], created })}\n\n`);
+        transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: "</details>" }, finish_reason: null }], created })}\n\n`);
       }
       // Append search citations
       if (searchResults.length > 0 && !isSearchSilentModel) {
@@ -812,7 +801,6 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           .map(r => `[${r.cite_index}]: [${r.title}](${r.url})`)
           .join('\n');
         if (citations) {
-          logger.info(`[DEBUG] Final citations:\n${citations}`);
           const citationContent = `\n\n**Citations:**\n${citations}`;
           transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: citationContent }, finish_reason: null }], created })}\n\n`);
         }
