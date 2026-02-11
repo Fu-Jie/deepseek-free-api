@@ -1,4 +1,6 @@
-# DeepSeek V3 Free 服务
+# DeepSeek V3/R1 Free 服务 (持续维护版)
+
+> **⚠️ 说明**: 原项目 `llm-red-team/deepseek-free-api` 已归档停止维护。本项目为 **接替维护版本**，旨在修复因 DeepSeek 官网更新导致的协议不兼容问题（如 `ERR_INVALID_CHAR` 和 `FINISHED` 状态码泄露），确保服务持续可用。
 
 <span>[ 中文 | <a href="README_EN.md">English</a> ]</span>
 
@@ -93,17 +95,50 @@
 
 ### 环境变量（可选）
 
-| 环境变量 | 是否必填 | 说明                               |
-|------|------|----------------------------------|
-|  DEEP_SEEK_CHAT_AUTHORIZATION   | 否    | 当配置了token 则使用token，未配置则需要在请求头中传递Authorization |
+| 环境变量 | 是否必填 | 说明 |
+|---|---|---|
+| DEEP_SEEK_CHAT_AUTHORIZATION | 否 | 当配置了token 则使用token，未配置则需要在请求头中传递Authorization |
 
-## Docker-compose运行
+## Docker部署 (推荐)
 
-clone 本仓库，运行下面的代码
+由于原版镜像已不再更新且包含 Bug，**请务必使用以下方式构建使用**，以确保包含最新的修复代码。
+
+### Docker-compose (推荐)
+
+1. 克隆本仓库：
+
+```shell
+git clone https://github.com/Fu-Jie/deepseek-free-api.git
+cd deepseek-free-api
+```
+
+1. 使用 docker-compose 构建并启动：
 
 ```shell
 docker compose up -d --build
 ```
+
+*注意：必须加上 `--build` 参数以确保使用本地最新的修复代码，而不是拉取旧的远程镜像。*
+
+### Docker-compose.yml 示例
+
+如果您需要手动创建 `docker-compose.yml`，请使用 `build: .` 而非 `image`:
+
+```yaml
+version: '3'
+
+services:
+  deepseek-free-api:
+    container_name: deepseek-free-api
+    build: .  # 使用本地代码构建，确保修复生效
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - TZ=Asia/Shanghai
+```
+
+## 其他部署方式
 
 ### Render部署
 
@@ -117,66 +152,6 @@ docker compose up -d --build
 3. 构建你的 Web Service（New+ -> Build and deploy from a Git repository -> Connect你fork的项目 -> 选择部署区域 -> 选择实例类型为Free -> Create Web Service）。
 
 4. 等待构建完成后，复制分配的域名并拼接URL访问即可。
-
-### Vercel部署
-
-**注意：Vercel免费账户的请求响应超时时间为10秒，但接口响应通常较久，可能会遇到Vercel返回的504超时错误！**
-
-请先确保安装了Node.js环境。
-
-```shell
-npm i -g vercel --registry http://registry.npmmirror.com
-vercel login
-git clone https://github.com/LLM-Red-Team/deepseek-free-api
-cd deepseek-free-api
-vercel --prod
-```
-
-## 原生部署
-
-请先安装好Node.js环境并且配置好环境变量，确认node命令可用。
-
-安装依赖
-
-```shell
-npm i
-```
-
-安装PM2进行进程守护
-
-```shell
-npm i -g pm2
-```
-
-编译构建，看到dist目录就是构建完成
-
-```shell
-npm run build
-```
-
-启动服务
-
-```shell
-pm2 start dist/index.js --name "deepseek-free-api"
-```
-
-查看服务实时日志
-
-```shell
-pm2 logs deepseek-free-api
-```
-
-重启服务
-
-```shell
-pm2 reload deepseek-free-api
-```
-
-停止服务
-
-```shell
-pm2 stop deepseek-free-api
-```
 
 ## 推荐使用客户端
 
