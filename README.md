@@ -106,6 +106,8 @@
 
 我们提供自动构建的 Docker 镜像，支持 `x86_64` 和 `ARM64` 架构。
 
+👉 **[查看所有可用镜像版本](https://github.com/Fu-Jie/deepseek-free-api/pkgs/container/deepseek-free-api)**
+
 ### Docker-compose (推荐)
 
 创建一个 `docker-compose.yml` 文件：

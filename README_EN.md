@@ -112,7 +112,11 @@ The service will select one for each request.
 |------|------|----------------------------------|
 |  DEEP_SEEK_CHAT_AUTHORIZATION   | No    | If configured, the token will be used. If not configured, the Authorization header must be provided in the request |
 
-## Docker Deployment
+## Docker Deployment (Recommended)
+
+We provide automatically built Docker images supporting both `x86_64` and `ARM64` architectures.
+
+👉 **[View all available image versions](https://github.com/Fu-Jie/deepseek-free-api/pkgs/container/deepseek-free-api)**
 
 Pull the image and start the service.
 
