@@ -18,6 +18,10 @@ Supports high-speed streaming output, multi-turn conversation, internet search, 
 - **Compatibility Fix** (2025-02-11): Resolved the `ERR_INVALID_CHAR` error triggered by DeepSeek website architecture changes.
 - **Output Purification**: Fixed the `FINISHED` internal status code leakage. Implemented strict path validation to guarantee that only actual model content is appended to your responses.
 - **History Sanitization**: Automatically strips residual `FINISHED` artifacts from older message histories to maintain clean context.
+- **R1 Search Support** (2025-02-12): Perfectly adapted to the DeepSeek R1 model's internet search functionality.
+  - Automatically parses and merges fragmented search results.
+  - Citations are appended to the response in `**1.** [Title](URL)` format, ensuring visibility across all clients.
+  - Filters out "SEARCH" metadata interference for a cleaner output experience.
 
 Fully compatible with ChatGPT interface.
 
@@ -265,7 +269,8 @@ Request data:
     // default: deepseek
     // deep thinking: deepseek-think or deepseek-r1
     // internet search: deepseek-search
-    // deep thinking + internet search: deepseek-r1-search or deepseek-think-search
+    // deep thinking + internet search: deepseek-r1-search (Recommended) or deepseek-think-search
+    // Note: Search results will automatically be appended to the end of the response as a bolded numbered list
     // silent mode (no output of thinking process or internet search results): deepseek-think-silent or deepseek-r1-silent or deepseek-search-silent
     // deep thinking but the thinking process is wrapped with <details> collapsible tags (requires page support for display): deepseek-think-fold or deepseek-r1-fold
     "model": "deepseek",

@@ -24,6 +24,10 @@
 - **兼容性修复** (2025-02-11): 修复了因 DeepSeek 官网更新导致的 `X-App-Version` 获取异常（`ERR_INVALID_CHAR`）的问题。
 - **响应净化**: 彻底解决了响应中偶现 `FINISHED` 状态码泄露到正文的问题，现在通过严格的路径校验（Strict Path Validation）确保输出内容的纯净。
 - **历史记录修复**: 自动清理历史对话中可能存在的 `FINISHED` 脏数据，防止上下文污染。
+- **R1 搜索支持** (2025-02-12): 完美适配 DeepSeek R1 模型的联网搜索功能。
+  - 自动解析并合并分段搜索结果。
+  - 引用（Citations）将以 `**1.** [标题](链接)` 格式附加在回复末尾，确保在所有客户端可见。
+  - 过滤掉 "SEARCH" 等元数据干扰，提供纯净的输出体验。
 
 # 风险警告
 
@@ -185,7 +189,8 @@ Authorization: Bearer [userToken value]
     // 默认：deepseek
     // 深度思考：deepseek-think 或 deepseek-r1
     // 联网搜索：deepseek-search
-    // 深度思考+联网搜索：deepseek-r1-search 或 deepseek-think-search
+    // 深度思考+联网搜索：deepseek-r1-search (推荐) 或 deepseek-think-search
+    // 注意：搜索结果将自动以加粗数字列表形式附加在回复末尾
     // 静默模式（不输出思考过程或联网搜索结果）：deepseek-think-silent 或 deepseek-r1-silent 或 deepseek-search-silent
     // 深度思考但思考过程使用<details>可折叠标签包裹（需要页面支持显示）：deepseek-think-fold 或 deepseek-r1-fold
     "model": "deepseek",
