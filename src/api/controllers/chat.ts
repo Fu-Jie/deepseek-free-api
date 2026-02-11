@@ -574,20 +574,17 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
           currentPath = 'thinking';
         } else if (chunk.p === 'response/content') {
           currentPath = 'content';
-        } else if (chunk.p) {
-          currentPath = ''; // Reset for other paths like search_status
         }
 
-        // Only append if the chunk's path explicitly indicates content or thinking
+        // Append value to the correct accumulator based on current path
+        const targetPath = chunk.p || currentPath;
         if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED') {
-          if (chunk.p === 'response/thinking_content') {
+          if (targetPath === 'response/thinking_content' || targetPath === 'thinking') {
             accumulatedThinkingContent += chunk.v;
-          } else if (chunk.p === 'response/content') {
+          } else if (targetPath === 'response/content' || targetPath === 'content') {
             accumulatedContent += chunk.v;
-          } else if (currentPath === 'thinking' && !chunk.p) {
-            // Fallback for chunks without path if we are already in a state (less likely in this API)
-            accumulatedThinkingContent += chunk.v;
-          } else if (currentPath === 'content' && !chunk.p) {
+          } else {
+            // Fallback: If we have a string value and it's not FINISHED, treat as content
             accumulatedContent += chunk.v;
           }
         }
@@ -685,7 +682,11 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
 
       if (chunk.p === 'response/thinking_content') currentPath = 'thinking';
       else if (chunk.p === 'response/content') currentPath = 'content';
-      else if (chunk.p) currentPath = ''; // Reset for search_status etc.
+
+      // Debug log for troubleshooting stream content
+      if (typeof chunk.v === 'string' && chunk.v.includes('FINISHED')) {
+        logger.info(`[STREAM DEBUG] Received FINISHED chunk. Path: ${chunk.p}, Value: ${chunk.v}, CurrentPath: ${currentPath}`);
+      }
 
       if (chunk.p === 'response/search_results' && Array.isArray(chunk.v)) {
         if (chunk.o !== 'BATCH') { // Initial search results
@@ -738,8 +739,8 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
             delta.content = content;
           }
         } else {
-          // If the path is not a known content path, do not output it
-          return;
+          // Fallback: Treat as content if not explicitly a thinking path
+          delta.content = content;
         }
 
         transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: null }], created })}\n\n`);
