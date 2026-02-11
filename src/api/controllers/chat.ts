@@ -716,14 +716,20 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         if (chunk.o !== 'BATCH') { // Initial search results
           searchResults = chunk.v;
           logger.info(`[STREAM SEARCH] Captured ${chunk.v.length} search results from path: ${chunk.p}`);
-        } else { // BATCH update for cite_index
+        } else { // BATCH update for search results (title, url, etc.)
           chunk.v.forEach((op: any) => {
             logger.info(`[STREAM SEARCH BATCH] op.p="${op.p}" op.v="${op.v}"`);
-            const match = op.p.match(/^(\d+)\/cite_index$/);
+            // Match any update ending in index/key (e.g., .../0/title, .../0/url, .../1/cite_index)
+            const match = op.p.match(/\/(\d+)\/(\w+)$/);
             if (match) {
               const index = parseInt(match[1], 10);
+              const key = match[2];
               if (searchResults[index]) {
-                searchResults[index].cite_index = op.v;
+                searchResults[index][key] = op.v;
+                logger.info(`[STREAM SEARCH UPDATE] Updated result[${index}].${key}`);
+              } else {
+                // Initialize if not exists (though typically initial array sets length)
+                searchResults[index] = { [key]: op.v };
               }
             }
           });
