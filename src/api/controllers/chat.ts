@@ -39,9 +39,9 @@ const FAKE_HEADERS = {
   "X-App-Version": "20241129.1",
   "X-Client-Locale": "zh-CN",
   "X-Client-Platform": "web",
-  "X-Client-Version": "1.0.0-always",
+  "X-Client-Version": "1.7.0",
 };
-let EVENT_COMMIT_ID = '41e9c7b1';
+let EVENT_COMMIT_ID = '5d2f8e71';
 // 当前IP地址
 let ipAddress = '';
 // access_token映射
@@ -1179,11 +1179,11 @@ async function getThinkingQuota(refreshToken: string) {
 }
 
 /**
- * 获取版本号
+ * 获取事件上报用的 Commit ID
  */
-async function fetchAppVersion(): Promise<string> {
+async function fetchEventCommitId(): Promise<string> {
   try {
-    logger.info('自动获取版本号');
+    logger.info('自动获取事件 Commit ID');
     const response = await axios.get('https://chat.deepseek.com/', {
       timeout: 5000,
       validateStatus: () => true,
@@ -1196,28 +1196,26 @@ async function fetchAppVersion(): Promise<string> {
       const html = response.data.toString();
       const versionMatch = html.match(/<meta name="commit-id" content="(.*?)">/);
       if (versionMatch && versionMatch[1]) {
-        const version = versionMatch[1];
-        logger.info(`获取版本号: ${version}`);
-        EVENT_COMMIT_ID = version;
-        return version;
+        const commitId = versionMatch[1];
+        logger.info(`获取事件 Commit ID: ${commitId}`);
+        EVENT_COMMIT_ID = commitId;
+        return commitId;
       }
     }
   } catch (err) {
-    logger.error('获取版本号失败:', err);
+    logger.error('获取事件 Commit ID 失败:', err);
   }
-  return "20241129.1";
+  return "5d2f8e71";
 }
 
-function autoUpdateAppVersion() {
-  fetchAppVersion().then((version) => {
-    FAKE_HEADERS["X-App-Version"] = version;
-  });
+function autoUpdateEventCommitId() {
+  fetchEventCommitId();
 }
 
-util.createCronJob('0 */10 * * * *', autoUpdateAppVersion).start();
+util.createCronJob('0 */10 * * * *', autoUpdateEventCommitId).start();
 
 getIPAddress().then(() => {
-  autoUpdateAppVersion();
+  autoUpdateEventCommitId();
 }).catch((err) => {
   logger.error('获取 IP 地址失败:', err);
 });
@@ -1227,5 +1225,5 @@ export default {
   createCompletionStream,
   getTokenLiveStatus,
   tokenSplit,
-  fetchAppVersion,
+  fetchAppVersion: fetchEventCommitId,
 };
