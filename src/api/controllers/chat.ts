@@ -569,7 +569,13 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
           logger.info(`[DEBUG] Received FINISHED chunk. Path: ${chunk.p}, Value: ${chunk.v}, CurrentPath: ${currentPath}`);
         }
 
-        // Update current path if specified
+        // === DEBUG: Log ALL chunks with path for protocol analysis ===
+        if (chunk.p) {
+          const vType = Array.isArray(chunk.v) ? `array[${chunk.v.length}]` : typeof chunk.v;
+          const vPreview = Array.isArray(chunk.v) ? JSON.stringify(chunk.v.map((item: any) => ({ type: item.type, id: item.id }))) : (typeof chunk.v === 'string' ? chunk.v.substring(0, 50) : String(chunk.v));
+          logger.info(`[NON-STREAM PATH] p="${chunk.p}" o="${chunk.o || ''}" vType=${vType} vPreview=${vPreview} currentPath=${currentPath}`);
+        }
+
         // Update current path if specified (DeepSeek uses fragments for thinking)
         if (chunk.p) {
           if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'THINK')) {
@@ -577,6 +583,7 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
           } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'TEXT')) {
             currentPath = 'content';
           }
+          logger.info(`[NON-STREAM PATH] => currentPath is now: ${currentPath}`);
         }
 
         // Use currentPath as fallback for chunks without 'p'
@@ -682,12 +689,20 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
 
       if (chunk.response_message_id && !messageId) messageId = chunk.response_message_id;
 
+      // === DEBUG: Log ALL chunks with path for protocol analysis ===
       if (chunk.p) {
-        if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v.length > 0 && chunk.v[0].type === 'THINK')) {
+        const vType = Array.isArray(chunk.v) ? `array[${chunk.v.length}]` : typeof chunk.v;
+        const vPreview = Array.isArray(chunk.v) ? JSON.stringify(chunk.v.map((item: any) => ({ type: item.type, id: item.id }))) : (typeof chunk.v === 'string' ? chunk.v.substring(0, 50) : String(chunk.v));
+        logger.info(`[STREAM PATH] p="${chunk.p}" o="${chunk.o || ''}" vType=${vType} vPreview=${vPreview} currentPath=${currentPath}`);
+      }
+
+      if (chunk.p) {
+        if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'THINK')) {
           currentPath = 'thinking';
-        } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v.length > 0 && chunk.v[0].type === 'TEXT')) {
+        } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'TEXT')) {
           currentPath = 'content';
         }
+        logger.info(`[STREAM PATH] => currentPath is now: ${currentPath}`);
       }
 
       // Debug log for troubleshooting stream content
