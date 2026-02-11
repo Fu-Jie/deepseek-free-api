@@ -568,7 +568,7 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
         }
 
         // Append value to the correct accumulator based on current path
-        if (typeof chunk.v === 'string') {
+        if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED') {
           if (currentPath === 'thinking') {
             accumulatedThinkingContent += chunk.v;
           } else if (currentPath === 'content') {
@@ -684,7 +684,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         return; // We've handled this event.
       }
 
-      if (typeof chunk.v === 'string') {
+      if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED') {
         const delta: { role?: string, content?: string, reasoning_content?: string } = {};
         if (isFirstChunk) {
           delta.role = "assistant";
