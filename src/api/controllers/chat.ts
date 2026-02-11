@@ -736,7 +736,9 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         return; // We've handled this event.
       }
 
-      if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED') {
+      // Only process string values from content paths; ignore metadata like conversation_mode
+      const isContentPath = chunk.p && (chunk.p.includes('/content') || chunk.p.includes('thinking_content'));
+      if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED' && isContentPath) {
         const delta: { role?: string, content?: string, reasoning_content?: string } = {};
         if (isFirstChunk) {
           delta.role = "assistant";
