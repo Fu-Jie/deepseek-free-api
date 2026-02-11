@@ -710,9 +710,12 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         logger.info(`[STREAM DEBUG] Received FINISHED chunk. Path: ${chunk.p}, Value: ${chunk.v}, CurrentPath: ${currentPath}`);
       }
 
-      if (chunk.p === 'response/search_results' && Array.isArray(chunk.v)) {
+      // Search results: support both legacy path and new fragments-based path
+      const isSearchResults = (chunk.p === 'response/search_results' || (chunk.p && chunk.p.endsWith('/results') && chunk.p.includes('fragments'))) && Array.isArray(chunk.v);
+      if (isSearchResults) {
         if (chunk.o !== 'BATCH') { // Initial search results
           searchResults = chunk.v;
+          logger.info(`[STREAM SEARCH] Captured ${chunk.v.length} search results from path: ${chunk.p}`);
         } else { // BATCH update for cite_index
           chunk.v.forEach((op: any) => {
             const match = op.p.match(/^(\d+)\/cite_index$/);
