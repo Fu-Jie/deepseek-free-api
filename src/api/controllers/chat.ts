@@ -487,8 +487,6 @@ function messagesPrepare(messages: any[]): string {
     } else {
       text = String(message.content);
     }
-    // Filter out "FINISHED" from history
-    text = text.replace(/FINISHED/g, "").trim();
     return { role: message.role, text };
   });
 
@@ -571,11 +569,16 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
           currentPath = ''; // Reset for other paths like search_status
         }
 
-        // Append value to the correct accumulator based on current path
+        // Only append if the chunk's path explicitly indicates content or thinking
         if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED') {
-          if (currentPath === 'thinking') {
+          if (chunk.p === 'response/thinking_content') {
             accumulatedThinkingContent += chunk.v;
-          } else if (currentPath === 'content') {
+          } else if (chunk.p === 'response/content') {
+            accumulatedContent += chunk.v;
+          } else if (currentPath === 'thinking' && !chunk.p) {
+            // Fallback for chunks without path if we are already in a state (less likely in this API)
+            accumulatedThinkingContent += chunk.v;
+          } else if (currentPath === 'content' && !chunk.p) {
             accumulatedContent += chunk.v;
           }
         }
@@ -699,7 +702,10 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           ? chunk.v.replace(/\[citation:(\d+)\]/g, '')
           : chunk.v.replace(/\[citation:(\d+)\]/g, '[$1]');
 
-        if (currentPath === 'thinking') {
+        // Use chunk.p for strict path validation to avoid status leaks
+        const targetPath = chunk.p || currentPath;
+
+        if (targetPath === 'response/thinking_content' || targetPath === 'thinking') {
           if (isSilentModel) return;
           if (isFoldModel) {
             if (!thinkingStarted) {
@@ -711,7 +717,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           } else {
             delta.reasoning_content = content;
           }
-        } else if (currentPath === 'content') {
+        } else if (targetPath === 'response/content' || targetPath === 'content') {
           if (isFoldModel && thinkingStarted) {
             delta.content = `</pre></details>${content}`;
             thinkingStarted = false;
@@ -719,7 +725,8 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
             delta.content = content;
           }
         } else {
-          delta.content = content;
+          // If the path is not a known content path, do not output it
+          return;
         }
 
         transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: null }], created })}\n\n`);
