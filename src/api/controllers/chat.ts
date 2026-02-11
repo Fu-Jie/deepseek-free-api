@@ -715,7 +715,12 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
       const isSearchResults = (chunk.p === 'response/search_results' || (chunk.p && chunk.p.endsWith('/results') && chunk.p.includes('fragments'))) && Array.isArray(chunk.v);
       if (isSearchResults) {
         if (chunk.o !== 'BATCH') { // Initial search results
-          searchResults = chunk.v;
+          if (searchResults.length === 0) {
+            searchResults = chunk.v;
+          } else {
+            // Merge new results into existing array to avoid overwriting earlier fragments
+            searchResults = [...searchResults, ...chunk.v];
+          }
           logger.info(`[STREAM SEARCH] Captured ${chunk.v.length} search results from path: ${chunk.p}`);
         } else { // BATCH update for search results (title, url, etc.)
           chunk.v.forEach((op: any) => {
@@ -800,7 +805,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         const citations = searchResults
           .filter(r => r.cite_index)
           .sort((a, b) => a.cite_index - b.cite_index)
-          .map(r => `[${r.cite_index}]: [${r.title}](${r.url})`)
+          .map(r => `[${r.cite_index}] [${r.title}](${r.url})`)
           .join('\n');
         if (citations) {
           const citationContent = `\n\n**Citations:**\n${citations}`;
