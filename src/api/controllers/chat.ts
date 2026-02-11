@@ -805,7 +805,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         const citations = searchResults
           .filter(r => r.cite_index)
           .sort((a, b) => a.cite_index - b.cite_index)
-          .map(r => `[${r.cite_index}] [${r.title}](${r.url})`)
+          .map(r => `**${r.cite_index}.** [${r.title}](${r.url})`)
           .join('\n');
         if (citations) {
           const citationContent = `\n\n**Citations:**\n${citations}`;
