@@ -570,22 +570,28 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
         }
 
         // Update current path if specified
-        // Update current path if specified (using includes for robust detection)
-        if (chunk.p && chunk.p.includes('thinking_content')) {
-          currentPath = 'thinking';
-        } else if (chunk.p && chunk.p.includes('response/content')) {
-          currentPath = 'content';
+        // Update current path if specified (DeepSeek uses fragments for thinking)
+        if (chunk.p) {
+          if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && (chunk.p.includes('content') || (chunk.v && chunk.v[0] && chunk.v[0].type === 'THINK')))) {
+            currentPath = 'thinking';
+          } else if (chunk.p.includes('response/content')) {
+            currentPath = 'content';
+          } else if (chunk.p === 'response/status') {
+            // Do not override currentPath with status, as it's metadata
+          } else {
+            // For other paths, we might want to stay in current mode if it's transient
+          }
         }
 
-        // Append value to the correct accumulator based on current path
+        // Use currentPath as fallback for chunks without 'p'
         const targetPath = chunk.p || currentPath;
         if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED') {
-          if (targetPath.includes('thinking_content') || targetPath === 'thinking') {
+          if (targetPath.includes('thinking') || targetPath.includes('fragments')) {
             accumulatedThinkingContent += chunk.v;
           } else if (targetPath.includes('response/content') || targetPath === 'content') {
             accumulatedContent += chunk.v;
           } else {
-            // Fallback: If current path is identified, stick to it
+            // Stronger sticky logic: if we are in thinking mode, stick to it
             if (currentPath === 'thinking') accumulatedThinkingContent += chunk.v;
             else accumulatedContent += chunk.v;
           }
@@ -682,8 +688,13 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
 
       if (chunk.response_message_id && !messageId) messageId = chunk.response_message_id;
 
-      if (chunk.p && chunk.p.includes('thinking_content')) currentPath = 'thinking';
-      else if (chunk.p && chunk.p.includes('response/content')) currentPath = 'content';
+      if (chunk.p) {
+        if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && (chunk.p.includes('content') || (chunk.v && chunk.v[0] && chunk.v[0].type === 'THINK')))) {
+          currentPath = 'thinking';
+        } else if (chunk.p.includes('response/content')) {
+          currentPath = 'content';
+        }
+      }
 
       // Debug log for troubleshooting stream content
       if (typeof chunk.v === 'string' && chunk.v.includes('FINISHED')) {
@@ -718,22 +729,22 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           ? chunk.v.replace(/\[citation:(\d+)\]/g, '')
           : chunk.v.replace(/\[citation:(\d+)\]/g, '[$1]');
 
-        // Use chunk.p for strict path validation to avoid status leaks
+        // Use sticky path logic for stream
         const targetPath = chunk.p || currentPath;
 
-        if (targetPath === 'response/thinking_content' || targetPath === 'thinking') {
+        if (targetPath.includes('thinking') || targetPath.includes('fragments')) {
           if (isSilentModel) return;
           if (isFoldModel) {
             if (!thinkingStarted) {
               thinkingStarted = true;
-              delta.content = `<details><summary>思考过程</summary><pre>${content}`;
+              delta.content = `<details open><summary>思考过程</summary><pre>${content}`;
             } else {
               delta.content = content;
             }
           } else {
             delta.reasoning_content = content;
           }
-        } else if (targetPath === 'response/content' || targetPath === 'content') {
+        } else if (targetPath.includes('response/content') || targetPath === 'content') {
           if (isFoldModel && thinkingStarted) {
             delta.content = `</pre></details>${content}`;
             thinkingStarted = false;
