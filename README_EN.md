@@ -22,6 +22,10 @@ Supports high-speed streaming output, multi-turn conversation, internet search, 
   - Automatically parses and merges fragmented search results.
   - Citations are appended to the response in `**1.** [Title](URL)` format, ensuring visibility across all clients.
   - Filters out "SEARCH" metadata interference for a cleaner output experience.
+- **Deep Thinking Protocol Adaptation** (2025-02-24): Deeply adapted to DeepSeek's latest **Fragment-based protocol** (v1.0.2).
+  - Perfectly resolves the issue where the R1 model's thinking process (Thinking/Reasoning Content) was mixed with the official response.
+  - Implemented real-time status tracking based on Fragment types, ensuring the thinking process is correctly placed in the `reasoning_content` field.
+  - Optimized "Sticky Path" parsing, significantly improving the stability of streaming output.
 
 Fully compatible with ChatGPT interface.
 
