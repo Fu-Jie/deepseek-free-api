@@ -550,7 +550,8 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
   let accumulatedThinkingContent = "";
   let messageId = '';
   const created = util.unixTimestamp();
-  let currentPath = ''; // State to track the current content type
+  // Default to thinking mode for specific models if we are at the beginning of the stream
+  let currentPath = (model.includes('think') || model.includes('r1')) ? 'thinking' : 'content';
 
   return new Promise((resolve, reject) => {
     const parser = createParser((event) => {
@@ -578,16 +579,23 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
 
         // Update current path if specified (DeepSeek uses fragments for thinking)
         if (chunk.p) {
-          if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'THINK')) {
+          if (chunk.p.includes('fragments')) {
+            if (chunk.v && Array.isArray(chunk.v) && chunk.v[0]) {
+              const fragType = chunk.v[0].type;
+              if (fragType === 'THINK') currentPath = 'thinking';
+              else if (fragType === 'RESPONSE') currentPath = 'content';
+            } else if (chunk.p.endsWith('/content')) {
+              // Path like response/fragments/-1/content
+              // currentPath should already be set by the last APPEND fragment
+            }
+          } else if (chunk.p.includes('thinking_content') || chunk.p.includes('thought')) {
             currentPath = 'thinking';
-          } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'RESPONSE')) {
+          } else if (chunk.p.includes('response/content')) {
             currentPath = 'content';
           }
           logger.info(`[NON-STREAM PATH] => currentPath is now: ${currentPath}`);
         }
 
-        // Use currentPath as fallback for chunks without 'p'
-        // Use currentPath as fallback for chunks without 'p'
         // Use currentPath as fallback for chunks without 'p' or for transient fragment content paths
         if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED') {
           if (currentPath === 'thinking') {
@@ -654,7 +662,8 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
   let messageId = '';
   const created = util.unixTimestamp();
   const transStream = new PassThrough();
-  let currentPath = '';
+  // Default to thinking mode for specific models if we are at the beginning of the stream
+  let currentPath = (model.includes('think') || model.includes('r1')) ? 'thinking' : 'content';
   let searchResults: any[] = [];
   let thinkingStarted = false;
 
@@ -698,9 +707,16 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
       }
 
       if (chunk.p) {
-        if (chunk.p.includes('thinking_content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'THINK')) {
+        if (chunk.p.includes('fragments')) {
+          if (chunk.v && Array.isArray(chunk.v) && chunk.v[0]) {
+            const fragType = chunk.v[0].type;
+            if (fragType === 'THINK') currentPath = 'thinking';
+            else if (fragType === 'RESPONSE') currentPath = 'content';
+          }
+          // Note: If it's fragments/.../content, currentPath is already sticky
+        } else if (chunk.p.includes('thinking_content') || chunk.p.includes('thought')) {
           currentPath = 'thinking';
-        } else if (chunk.p.includes('response/content') || (chunk.p.includes('fragments') && chunk.v && Array.isArray(chunk.v) && chunk.v[0] && chunk.v[0].type === 'RESPONSE')) {
+        } else if (chunk.p.includes('response/content')) {
           currentPath = 'content';
         }
         logger.info(`[STREAM PATH] => currentPath is now: ${currentPath}`);
@@ -755,10 +771,10 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           : chunk.v.replace(/\[citation:(\d+)\]/g, '[$1]');
 
         // Use sticky path logic for stream
-        // Only classify as thinking if currentPath is explicitly 'thinking' or path contains 'thinking'/'THINK'
-        // Avoid broad 'fragments' check here which led to capturing all content
-        if (chunk.p && chunk.p.includes('thinking')) {
-          // Process based on current identified path type
+        if (chunk.p && (chunk.p.includes('thinking') || chunk.p.includes('thought'))) {
+          currentPath = 'thinking';
+        } else if (chunk.p && chunk.p.includes('fragments') && chunk.p.endsWith('/content') && !chunk.v.includes('FINISHED')) {
+          // If p is response/fragments/-1/content, keep current sticky path
         }
         if (currentPath === 'thinking') {
           if (isSilentModel) return;
