@@ -37,11 +37,11 @@ const FAKE_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
   "X-App-Version": "20241129.1",
-  "X-Client-Locale": "zh-CN",
+  "X-Client-Locale": "zh_CN",
   "X-Client-Platform": "web",
-  "X-Client-Version": "1.7.0",
+  "X-Client-Version": "1.7.1",
 };
-let EVENT_COMMIT_ID = '5d2f8e71';
+let EVENT_COMMIT_ID = '6cf9c15d';
 // 当前IP地址
 let ipAddress = '';
 // access_token映射
@@ -1275,43 +1275,79 @@ async function getThinkingQuota(refreshToken: string) {
 }
 
 /**
- * 获取事件上报用的 Commit ID
+ * 自动从官网获取最新版本和 Commit ID
  */
-async function fetchEventCommitId(): Promise<string> {
+async function fetchLatestVersion(): Promise<string> {
   try {
-    logger.info('自动获取事件 Commit ID');
+    logger.info('正在从官网自动获取最新版本信息...');
     const response = await axios.get('https://chat.deepseek.com/', {
-      timeout: 5000,
+      timeout: 10000,
+      headers: { ...FAKE_HEADERS },
       validateStatus: () => true,
-      headers: {
-        ...FAKE_HEADERS,
-        Cookie: generateCookie()
-      }
     });
-    if (response.status === 200 && response.data) {
-      const html = response.data.toString();
-      const versionMatch = html.match(/<meta name="commit-id" content="(.*?)">/);
-      if (versionMatch && versionMatch[1]) {
-        const commitId = versionMatch[1];
-        logger.info(`获取事件 Commit ID: ${commitId}`);
-        EVENT_COMMIT_ID = commitId;
-        return commitId;
+    
+    if (response.status !== 200 || !response.data) {
+      logger.warn(`获取官网首页失败, 状态码: ${response.status}`);
+      return EVENT_COMMIT_ID;
+    }
+
+    const html = response.data.toString();
+    
+    // 1. 提取 Commit ID
+    const commitIdMatch = html.match(/<meta name="commit-id" content="(.*?)">/);
+    if (commitIdMatch && commitIdMatch[1]) {
+      EVENT_COMMIT_ID = commitIdMatch[1];
+      logger.success(`获取 Commit ID 成功: ${EVENT_COMMIT_ID}`);
+    }
+
+    // 2. 尝试从 JS 资源文件中提取 X-App-Version 和 X-Client-Version
+    const jsUrlMatch = html.match(/src="([^"]*?main\.[a-z0-9]+\.js)"/i);
+    if (jsUrlMatch && jsUrlMatch[1]) {
+      let jsUrl = jsUrlMatch[1];
+      if (!jsUrl.startsWith('http')) {
+        jsUrl = `https://chat.deepseek.com${jsUrl}`;
+      }
+      
+      logger.info(`发现主 JS 文件: ${jsUrl}`);
+      const jsResponse = await axios.get(jsUrl, { timeout: 15000 }).catch((e) => {
+        logger.error(`抓取 JS 文件失败: ${e.message}`);
+        return null;
+      });
+      if (jsResponse && jsResponse.data) {
+        const jsContent = jsResponse.data.toString();
+        logger.info(`成功读取 JS 文件, 长度: ${jsContent.length}`);
+        
+        const appVersionMatch = jsContent.match(/appVersion\s*:\s*["'](.*?)["']/i);
+        if (appVersionMatch && appVersionMatch[1]) {
+          FAKE_HEADERS["X-App-Version"] = appVersionMatch[1];
+          logger.success(`获取 X-App-Version 成功: ${FAKE_HEADERS["X-App-Version"]}`);
+        } else {
+          logger.warn('未能从 JS 中找到 AppVersion');
+        }
+
+        const clientVersionMatch = jsContent.match(/clientVersion\s*:\s*["'](.*?)["']/i) || jsContent.match(/version\s*:\s*["'](\d+\.\d+\.\d+)["']/i);
+        if (clientVersionMatch && clientVersionMatch[1]) {
+           FAKE_HEADERS["X-Client-Version"] = clientVersionMatch[1];
+           logger.success(`获取 X-Client-Version 成功: ${FAKE_HEADERS["X-Client-Version"]}`);
+        } else {
+          logger.warn('未能从 JS 中找到 ClientVersion');
+        }
       }
     }
   } catch (err) {
-    logger.error('获取事件 Commit ID 失败:', err);
+    logger.error('自动补全版本信息失败:', err.message);
   }
-  return "5d2f8e71";
+  return EVENT_COMMIT_ID;
 }
 
-function autoUpdateEventCommitId() {
-  fetchEventCommitId();
+function autoUpdateVersion() {
+  fetchLatestVersion();
 }
 
-util.createCronJob('0 */10 * * * *', autoUpdateEventCommitId).start();
+util.createCronJob('0 */10 * * * *', autoUpdateVersion).start();
 
 getIPAddress().then(() => {
-  autoUpdateEventCommitId();
+  autoUpdateVersion();
 }).catch((err) => {
   logger.error('获取 IP 地址失败:', err);
 });
@@ -1321,5 +1357,5 @@ export default {
   createCompletionStream,
   getTokenLiveStatus,
   tokenSplit,
-  fetchAppVersion: fetchEventCommitId,
+  fetchAppVersion: fetchLatestVersion,
 };
