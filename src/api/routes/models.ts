@@ -9,12 +9,12 @@ export default {
             return {
                 "data": [
                     {
-                        "id": "deepseek-chat",
+                        "id": "deepseek",
                         "object": "model",
                         "owned_by": "deepseek-free-api"
                     },
                     {
-                        "id": "deepseek-coder",
+                        "id": "deepseek-chat",
                         "object": "model",
                         "owned_by": "deepseek-free-api"
                     },
@@ -30,6 +30,26 @@ export default {
                     },
                     {
                         "id": "deepseek-search",
+                        "object": "model",
+                        "owned_by": "deepseek-free-api"
+                    },
+                    {
+                        "id": "deepseek-expert",
+                        "object": "model",
+                        "owned_by": "deepseek-free-api"
+                    },
+                    {
+                        "id": "deepseek-expert-r1",
+                        "object": "model",
+                        "owned_by": "deepseek-free-api"
+                    },
+                    {
+                        "id": "deepseek-expert-search",
+                        "object": "model",
+                        "owned_by": "deepseek-free-api"
+                    },
+                    {
+                        "id": "deepseek-expert-r1-search",
                         "object": "model",
                         "owned_by": "deepseek-free-api"
                     },

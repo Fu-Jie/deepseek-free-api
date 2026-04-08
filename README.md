@@ -18,20 +18,132 @@
 👉 **[Awesome Open WebUI](https://github.com/Fu-Jie/awesome-openwebui)**
 
 汇集了 Open WebUI 的最佳实践、插件、教程与资源。如果你觉得本项目解决了你的燃眉之急，不妨去那里点个 Star ⭐️ 支持一下！
+## 支持详情
+
+### 1. 支持模型列表
+
+本项目通过解析模型名称中的关键字，动态注入官方对应的协议参数。各功能可自由排列组合：
+
+| 模型名称 (Model ID) | 专家模式 | 深度思考 | 联网搜索 | 说明 |
+| :--- | :---: | :---: | :---: | :--- |
+| `deepseek` | ❌ | ❌ | ❌ | 基础对话模式 |
+| `deepseek-expert` | ✅ | ❌ | ❌ | **推荐**：专家增强模式 (提示词理解更强) |
+| `deepseek-r1` | ❌ | ✅ | ❌ | 官方 R1 深度思考模式 |
+| `deepseek-search` | ❌ | ❌ | ✅ | 官方联网搜索模式 |
+| `deepseek-expert-r1` | ✅ | ✅ | ❌ | 专家模式 + 深度思考 |
+| `deepseek-expert-search` | ✅ | ❌ | ✅ | 专家模式 + 联网搜索 |
+| `deepseek-r1-search` | ❌ | ✅ | ✅ | 深度思考 + 联网搜索 |
+| `deepseek-expert-r1-search` | ✅ | ✅ | ✅ | **最强形态**：全功能开启 (专家+思考+搜索) |
+
+> **组合建议**：模型名包含 `expert` 开启专家模式，包含 `think` 或 `r1` 开启思考，包含 `search` 开启搜索。后缀支持 `-silent`（不显示中间过程）和 `-fold`（折叠思考内容）。
+
+### 2. 快捷触发 (Magic Triggers)
+
+无需更换模型名，您可以通过以下方式在任何模型下触发深度思考：
+
+- 提示词以 `?` 或 `？` 开头。
+- 提示词包含 `深度思考` 四个字。
+
+### 3. 连续对话 (Continuous Conversation)
+
+本项目支持通过 `conversation_id` 实现原生的连续对话（即利用 DeepSeek 服务端的记忆，而非通过客户端上传历史 `messages`）。
+
+- **使用方法**：在 OpenAI 兼容请求的 `body` 中加入 `"conversation_id": "YOUR_ID"`。
+- **ID 来源**：每一轮 API 响应体的 `id` 字段即为下一轮所需的 `conversation_id`。
+- **ID 格式说明**：内部格式为 `session_id@parent_message_id`。
+  - `session_id`: 官方会话的 UUID。
+  - `parent_message_id`: 上一轮消息的序号（2026 协议要求必须为数字类型，代理层已处理）。
+- **优势**：
+  - **节省流量**：无需向服务器重复发送历史聊天记录。
+  - **原生体验**：模型能完全继承之前的搜索结果、思考过程和专家状态。
+
+### 4. 代码示例 (Code Examples)
+
+#### 第一轮对话 (开启会话并设定背景)
+
+**请求 (Request):**
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "model": "deepseek-expert",
+    "messages": [{"role": "user", "content": "讲一个关于穿红色宇航服的小猫在火星探险的故事开端。"}]
+  }'
+```
+
+**响应 (Response):**
+
+```json
+{
+  "id": "ae123456-7890-abcd-efgh-ijklmnopqrst@2",
+  "model": "deepseek-expert",
+  "object": "chat.completion",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "在一片锈红色的沙丘之上，一只名叫“汤姆”的小猫正笨拙地挪动着它的四肢。它穿着一件量身定制的鲜红色宇航服..."
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}
+```
+
+#### 第二轮对话 (利用 `conversation_id` 继续会话)
+
+**请求 (Request):**
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "model": "deepseek-expert",
+    "conversation_id": "ae123456-7890-abcd-efgh-ijklmnopqrst@2",
+    "messages": [{"role": "user", "content": "这只小猫的宇航服是什么颜色的？"}]
+  }'
+```
+
+**响应 (Response):**
+
+```json
+{
+  "id": "ae123456-7890-abcd-efgh-ijklmnopqrst@4",
+  "model": "deepseek-expert",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "正如故事开头所提到的，汤姆穿着一件**鲜红色**的宇航服，这让它在火星暗淡的背景下显得格外显眼。"
+      }
+    }
+  ]
+}
+```
 
 ## 最近更新
 
-- **兼容性修复** (2025-02-11): 修复了因 DeepSeek 官网更新导致的 `X-App-Version` 获取异常（`ERR_INVALID_CHAR`）的问题。
+- **兼容性修复** (2026-02-11): 修复了因 DeepSeek 官网更新导致的 `X-App-Version` 获取异常（`ERR_INVALID_CHAR`）的问题。
 - **响应净化**: 彻底解决了响应中偶现 `FINISHED` 状态码泄露到正文的问题，现在通过严格的路径校验（Strict Path Validation）确保输出内容的纯净。
 - **历史记录修复**: 自动清理历史对话中可能存在的 `FINISHED` 脏数据，防止上下文污染。
-- **R1 搜索支持** (2025-02-12): 完美适配 DeepSeek R1 模型的联网搜索功能。
+- **R1 搜索支持** (2026-02-12): 完美适配 DeepSeek R1 模型的联网搜索功能。
   - 自动解析并合并分段搜索结果。
   - 引用（Citations）将以 `**1.** [标题](链接)` 格式附加在回复末尾，确保在所有客户端可见。
   - 过滤掉 "SEARCH" 等元数据干扰，提供纯净的输出体验。
+- **专家模式支持** (2026-04-08): 通过逆向官方 Web 端协议，完美适配了全新的 **“专家模式” (Expert Mode)**。
+  - 自动注入 `model_type: "expert"` 参数，触发官方更强的推理能力。
+  - 修正了会话创建接口的 ID 提取路径，解决了 `missing field chat_session_id` 的顽疾。
+  - 详见：[DeepSeek 专家模式逆向分析报告](./REVERSE_ENGINEERING_EXPERT_MODE.md)
 - **深度思考协议适配** (2025-02-24): 针对 DeepSeek 官网最新的 **Fragment-based 协议** 进行了深度适配 (v1.0.2)。
   - 完美解决 R1 模型思考过程（Thinking/Reasoning Content）与正式回答混淆的问题。
   - 实现了基于 Fragment 类型的实时状态追踪，确保思考过程被正确放入 `reasoning_content` 字段。
   - 优化了“粘性路径”解析，显著提升了流式输出的稳定性。
+
 
 # 风险警告
 
@@ -191,13 +303,16 @@ Authorization: Bearer [userToken value]
 {
     // model名称
     // 默认：deepseek
-    // 深度思考：deepseek-think 或 deepseek-r1
+    // 专家模式：deepseek-expert (推荐)
+    // 深度思考：deepseek-r1
     // 联网搜索：deepseek-search
-    // 深度思考+联网搜索：deepseek-r1-search (推荐) 或 deepseek-think-search
-    // 注意：搜索结果将自动以加粗数字列表形式附加在回复末尾
-    // 静默模式（不输出思考过程或联网搜索结果）：deepseek-think-silent 或 deepseek-r1-silent 或 deepseek-search-silent
-    // 深度思考但思考过程使用<details>可折叠标签包裹（需要页面支持显示）：deepseek-think-fold 或 deepseek-r1-fold
-    "model": "deepseek",
+    // --- 组合模型示例 ---
+    // 专家模式 + 深度思考：deepseek-expert-r1
+    // 专家模式 + 联网搜索：deepseek-expert-search
+    // 专家模式 + 深度思考 + 联网搜索：deepseek-expert-r1-search
+    // --- 快捷触发 ---
+    // 提示词以 "?" 或 "？" 开头，或包含 "深度思考" 字样时，逻辑上会自动开启深度思考模式。
+    "model": "deepseek-expert",
     // 默认多轮对话基于消息合并实现，某些场景可能导致能力下降且受单轮最大token数限制
     // 如果您想获得原生的多轮对话体验，可以传入上一轮消息获得的id，来接续上下文
     // "conversation_id": "50207e56-747e-4800-9068-c6fd618374ee@2",

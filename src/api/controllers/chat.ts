@@ -170,9 +170,9 @@ async function createSession(model: string, refreshToken: string): Promise<strin
     }
   );
   const { biz_data } = checkResult(result, refreshToken);
-  if (!biz_data)
+  if (!biz_data || !biz_data.chat_session)
     throw new APIException(EX.API_REQUEST_FAILED, "创建会话失败，可能是账号或IP地址被封禁");
-  return biz_data.id;
+  return biz_data.chat_session.id;
 }
 
 /**
@@ -243,7 +243,7 @@ async function createCompletion(
       refConvId = null;
 
     // 消息预处理
-    const prompt = messagesPrepare(messages);
+    const prompt = refConvId ? messagesPrepare([messages[messages.length - 1]]) : messagesPrepare(messages);
 
     // 解析引用对话ID
     const [refSessionId, refParentMsgId] = refConvId?.split('@') || [];
@@ -252,7 +252,11 @@ async function createCompletion(
     const token = await acquireToken(refreshToken);
 
     const isSearchModel = model.includes('search');
-    const isThinkingModel = model.includes('think') || model.includes('r1') || prompt.includes('深度思考');
+    const isThinkingModel = model.includes('think') || model.includes('r1') || prompt.includes('深度思考') || prompt.startsWith('?') || prompt.startsWith('？');
+    const isExpertModel = model.includes('expert');
+    const isSilentModel = model.includes('silent');
+    const isFoldModel = model.includes('fold');
+
 
     // 已经支持同时使用，此处注释
     // if(isSearchModel && isThinkingModel)
@@ -272,16 +276,20 @@ async function createCompletion(
     // 创建会话
     const sessionId = refSessionId || await createSession(model, refreshToken);
 
+    const payload = {
+      chat_session_id: sessionId,
+      parent_message_id: refParentMsgId ? parseInt(refParentMsgId) : null,
+      model_type: isExpertModel ? "expert" : "default",
+      prompt,
+      ref_file_ids: [],
+      thinking_enabled: isThinkingModel,
+      search_enabled: isSearchModel,
+      preempt: false
+    };
+
     const result = await axios.post(
       "https://chat.deepseek.com/api/v0/chat/completion",
-      {
-        chat_session_id: sessionId,
-        parent_message_id: refParentMsgId || null,
-        prompt,
-        ref_file_ids: [],
-        search_enabled: isSearchModel,
-        thinking_enabled: isThinkingModel
-      },
+      payload,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -358,17 +366,14 @@ async function createCompletionStream(
       refConvId = null;
 
     // 消息预处理
-    const prompt = messagesPrepare(messages);
+    const prompt = refConvId ? messagesPrepare([messages[messages.length - 1]]) : messagesPrepare(messages);
 
     // 解析引用对话ID
     const [refSessionId, refParentMsgId] = refConvId?.split('@') || [];
 
     const isSearchModel = model.includes('search');
-    const isThinkingModel = model.includes('think') || model.includes('r1') || prompt.includes('深度思考');
-
-    // 已经支持同时使用，此处注释
-    // if(isSearchModel && isThinkingModel)
-    //   throw new APIException(EX.API_REQUEST_FAILED, '深度思考和联网搜索不能同时使用');
+    const isThinkingModel = model.includes('think') || model.includes('r1') || prompt.includes('深度思考') || prompt.startsWith('?') || prompt.startsWith('？');
+    const isExpertModel = model.includes('expert');
 
     if (isThinkingModel) {
       const thinkingQuota = await getThinkingQuota(refreshToken);
@@ -390,11 +395,13 @@ async function createCompletionStream(
       "https://chat.deepseek.com/api/v0/chat/completion",
       {
         chat_session_id: sessionId,
-        parent_message_id: refParentMsgId || null,
+        parent_message_id: refParentMsgId ? parseInt(refParentMsgId) : null,
+        model_type: isExpertModel ? "expert" : "default",
         prompt,
         ref_file_ids: [],
+        thinking_enabled: isThinkingModel,
         search_enabled: isSearchModel,
-        thinking_enabled: isThinkingModel
+        preempt: false
       },
       {
         headers: {
@@ -409,7 +416,6 @@ async function createCompletionStream(
         responseType: "stream",
       }
     );
-
     // 发送事件，缓解被封号风险
     await sendEvents(sessionId, refreshToken);
 
