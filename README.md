@@ -1,6 +1,10 @@
 # DeepSeek Free API 服务 (持续维护版)
 
 > **⚠️ 说明**: 原项目 `llm-red-team/deepseek-free-api` 已归档停止维护。本项目为 **接替维护版本**，旨在修复因 DeepSeek 官网更新导致的协议不兼容问题（如 `ERR_INVALID_CHAR` 和 `FINISHED` 状态码泄露），确保服务持续可用。
+>
+> [!TIP]
+> **新项目推荐**：基于小米大模型官网逆向、原生支持 HTTP MCP 协议的新一代网关 [MiMo Free API MCP](https://github.com/Fu-Jie/mimo-free-api-mcp) 现已发布，欢迎体验！
+
 
 <span>[ 中文 | <a href="README_EN.md">English</a> ]</span>
 
