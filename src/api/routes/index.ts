@@ -6,6 +6,7 @@ import ping from "./ping.ts";
 import token from './token.js';
 import models from './models.ts';
 import responses from './responses.ts';
+import messages, { anthropicMessages } from './messages.ts';
 
 export default [
     {
@@ -25,5 +26,7 @@ export default [
     ping,
     token,
     models,
-    responses
+    responses,
+    messages,
+    anthropicMessages
 ];
