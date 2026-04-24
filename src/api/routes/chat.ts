@@ -15,15 +15,16 @@ export default {
     post: {
 
         '/completions': async (request: Request) => {
+            // 如果环境变量没有token则读取请求中的
+            if (DEEP_SEEK_CHAT_AUTHORIZATION) {
+                request.headers.authorization = "Bearer " + DEEP_SEEK_CHAT_AUTHORIZATION;
+            }
+
             request
                 .validate('body.conversation_id', v => _.isUndefined(v) || _.isString(v))
                 .validate('body.messages', _.isArray)
                 .validate('headers.authorization', _.isString)
 
-            // 如果环境变量没有token则读取请求中的
-            if (DEEP_SEEK_CHAT_AUTHORIZATION) {
-                request.headers.authorization = "Bearer " + DEEP_SEEK_CHAT_AUTHORIZATION;
-            }
             // token切分
             const tokens = chat.tokenSplit(request.headers.authorization);
             // 随机挑选一个token
