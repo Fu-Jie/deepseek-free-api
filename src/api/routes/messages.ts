@@ -118,18 +118,65 @@ function hashString(value: string) {
     return (hash >>> 0).toString(16);
 }
 
-function getSessionKey(model: string, system: any, messages: any[], tools: any[]) {
-    const firstUserMessage = messages.find((message) => _.get(message, 'role') === 'user');
-    const toolNames = _.isArray(tools) ? tools.map((tool) => _.get(tool, 'name')).filter(Boolean).sort() : [];
-    return hashString(stableStringify({
-        model,
-        system: extractText(system).slice(0, 2000),
-        firstUser: extractText(_.get(firstUserMessage, 'content')).slice(0, 2000),
-        toolNames,
-    }));
+function getHeader(request: Request, name: string) {
+    return _.get(request.headers, name.toLowerCase()) || _.get(request.headers, name);
 }
 
-function getMessagesForDeepSeek(model: string, messages: any[], system: any, tools: any[], explicitConversationId?: string) {
+function getClientIdentity(request: Request) {
+    const explicitClientId = getHeader(request, 'x-client-id') || getHeader(request, 'x-newapi-user') || getHeader(request, 'x-newapi-token');
+    const authorization = String(getHeader(request, 'authorization') || '');
+    return String(explicitClientId || `auth_${hashString(authorization)}`);
+}
+
+function getExplicitSessionId(request: Request) {
+    const sessionId = getHeader(request, 'x-session-id') || getHeader(request, 'x-newapi-session');
+    return sessionId ? String(sessionId) : '';
+}
+
+function fingerprintMessages(messages: any[], count: number) {
+    return hashString(stableStringify(messages.slice(0, count).map((message) => ({
+        role: _.get(message, 'role') || 'user',
+        content: extractText(_.get(message, 'content')).slice(0, 1000),
+    }))));
+}
+
+function getProgressiveSessionKeys(request: Request, endpoint: string, model: string, messages: any[]) {
+    const clientId = getClientIdentity(request);
+    const sessionId = getExplicitSessionId(request);
+    const prefix = `${endpoint}:${clientId}:${model}`;
+    if (sessionId) return { currentKey: `${prefix}:session:${sessionId}`, previousKeys: [] as string[] };
+
+    const tempKey = `${prefix}:m1:${fingerprintMessages(messages, 1)}`;
+    if (messages.length >= 5)
+        return {
+            currentKey: `${prefix}:m5:${fingerprintMessages(messages, 5)}`,
+            previousKeys: [`${prefix}:m3:${fingerprintMessages(messages, 3)}`, tempKey],
+        };
+    if (messages.length >= 3)
+        return {
+            currentKey: `${prefix}:m3:${fingerprintMessages(messages, 3)}`,
+            previousKeys: [tempKey],
+        };
+    return { currentKey: tempKey, previousKeys: [] as string[] };
+}
+
+function getProgressiveCachedSession(currentKey: string, previousKeys: string[]) {
+    let session = sessionMap.get(currentKey);
+    if (!session) {
+        const previousKey = previousKeys.find((key) => sessionMap.has(key));
+        if (previousKey) {
+            session = sessionMap.get(previousKey);
+            if (session) {
+                sessionMap.set(currentKey, { ...session, updatedAt: Date.now() });
+                sessionMap.delete(previousKey);
+            }
+        }
+    }
+    if (!session || Date.now() - session.updatedAt > ANTHROPIC_SESSION_TTL) return null;
+    return session;
+}
+
+function getMessagesForDeepSeek(request: Request, model: string, messages: any[], system: any, tools: any[], explicitConversationId?: string) {
     if (!ANTHROPIC_SESSION_REUSE || explicitConversationId)
         return {
             sessionKey: null,
@@ -137,14 +184,13 @@ function getMessagesForDeepSeek(model: string, messages: any[], system: any, too
             messages: normalizeAnthropicMessages(messages, system, tools),
         };
 
-    const sessionKey = getSessionKey(model, system, messages, tools);
-    const cached = sessionMap.get(sessionKey);
+    const { currentKey: sessionKey, previousKeys } = getProgressiveSessionKeys(request, 'messages', model, messages);
+    const cached = getProgressiveCachedSession(sessionKey, previousKeys);
     const canReuse = cached
         && messages.length > cached.messageCount
         && Date.now() - cached.updatedAt <= ANTHROPIC_SESSION_TTL;
 
     if (!canReuse) {
-        sessionMap.delete(sessionKey);
         return {
             sessionKey,
             refConvId: undefined,
@@ -539,7 +585,7 @@ async function handleMessages(request: Request) {
     const tokens = chat.tokenSplit(request.headers.authorization);
     const token = _.sample(tokens);
     const { model, messages, system, tools, stream, conversation_id } = request.body;
-    const prepared = getMessagesForDeepSeek(model, messages, system, tools, conversation_id);
+    const prepared = getMessagesForDeepSeek(request, model, messages, system, tools, conversation_id);
 
     if (!prepared.messages.length)
         throw new Error('Params body.messages invalid');
