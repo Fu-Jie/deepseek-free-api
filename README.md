@@ -28,18 +28,18 @@
 
 本项目通过解析模型名称中的关键字，动态注入官方对应的协议参数。各功能可自由排列组合：
 
-| 模型名称 (Model ID) | 专家模式 | 深度思考 | 联网搜索 | 说明 |
-| :--- | :---: | :---: | :---: | :--- |
-| `deepseek` | ❌ | ❌ | ❌ | 基础对话模式 |
-| `deepseek-expert` | ✅ | ❌ | ❌ | **推荐**：专家增强模式 (提示词理解更强) |
-| `deepseek-r1` | ❌ | ✅ | ❌ | 官方 R1 深度思考模式 |
-| `deepseek-search` | ❌ | ❌ | ✅ | 官方联网搜索模式 |
-| `deepseek-expert-r1` | ✅ | ✅ | ❌ | 专家模式 + 深度思考 |
-| `deepseek-expert-search` | ✅ | ❌ | ✅ | 专家模式 + 联网搜索 |
-| `deepseek-r1-search` | ❌ | ✅ | ✅ | 深度思考 + 联网搜索 |
-| `deepseek-expert-r1-search` | ✅ | ✅ | ✅ | **最强形态**：全功能开启 (专家+思考+搜索) |
+| 模型名称 (Model ID) | 对应后端版本 | 专家模式 | 深度思考 | 联网搜索 | 说明 |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| `deepseek` | **V4-Flash** | ❌ | ❌ | ❌ | 基础对话模式 |
+| `deepseek-expert` | **V4-Pro** | ✅ | ❌ | ❌ | **推荐**：专家增强模式 (1M 上下文, Agent 优化) |
+| `deepseek-r1` | **V4-Flash** | ❌ | ✅ | ❌ | 官方 R1 深度思考模式 |
+| `deepseek-search` | **V4-Flash** | ❌ | ❌ | ✅ | 官方联网搜索模式 |
+| `deepseek-expert-r1` | **V4-Pro** | ✅ | ✅ | ❌ | **顶级推理**：V4 Pro + 深度思考 |
+| `deepseek-expert-search` | **V4-Pro** | ✅ | ❌ | ✅ | V4 Pro + 联网搜索 |
+| `deepseek-r1-search` | **V4-Flash** | ❌ | ✅ | ✅ | 深度思考 + 联网搜索 |
+| `deepseek-expert-r1-search` | **V4-Pro** | ✅ | ✅ | ✅ | **最强形态**：V4 Pro + 思考 + 搜索 |
 
-> **组合建议**：模型名包含 `expert` 开启专家模式，包含 `think` 或 `r1` 开启思考，包含 `search` 开启搜索。后缀支持 `-silent`（不显示中间过程）和 `-fold`（折叠思考内容）。
+> **映射逻辑**：无需更改模型名称。系统会自动识别：包含 `expert` 即调用 **V4-Pro**；不包含则默认调用 **V4-Flash**。包含 `think` 或 `r1` 开启思考，包含 `search` 开启搜索。后缀支持 `-silent` 和 `-fold` 模式。
 
 ### 2. 快捷触发 (Magic Triggers)
 
@@ -132,6 +132,11 @@ curl -X POST http://127.0.0.1:8000/v1/chat/completions \
 
 ## 最近更新
 
+- **DeepSeek-V4 全面适配** (2026-04-24): 完美适配官方最新发布的 **DeepSeek-V4** 预览版。
+  - 支持 `deepseek-v4-pro` 与 `deepseek-v4-flash` 模型。
+  - 上下文长度上限提升至 **1M (百万级)**。
+  - 优化了针对 Agent (如 Claude Code) 的响应稳定性。
+  - 提示：官方已宣布 `deepseek-chat` 与 `deepseek-reasoner` 将于 2026-07-24 弃用。
 - **兼容性修复** (2026-02-11): 修复了因 DeepSeek 官网更新导致的 `X-App-Version` 获取异常（`ERR_INVALID_CHAR`）的问题。
 - **响应净化**: 彻底解决了响应中偶现 `FINISHED` 状态码泄露到正文的问题，现在通过严格的路径校验（Strict Path Validation）确保输出内容的纯净。
 - **历史记录修复**: 自动清理历史对话中可能存在的 `FINISHED` 脏数据，防止上下文污染。
@@ -306,14 +311,14 @@ Authorization: Bearer [userToken value]
 ```json
 {
     // model名称
-    // 默认：deepseek
-    // 专家模式：deepseek-expert (推荐)
+    // 默认：deepseek (对应 deepseek-v4-flash)
+    // 专家模式：deepseek-expert (对应 deepseek-v4-pro, 推荐)
     // 深度思考：deepseek-r1
     // 联网搜索：deepseek-search
     // --- 组合模型示例 ---
-    // 专家模式 + 深度思考：deepseek-expert-r1
-    // 专家模式 + 联网搜索：deepseek-expert-search
-    // 专家模式 + 深度思考 + 联网搜索：deepseek-expert-r1-search
+    // 专家模式 + 深度思考：deepseek-expert-r1 (V4-Pro + Reasoning)
+    // 专家模式 + 联网搜索：deepseek-expert-search (V4-Pro + Search)
+    // 专家模式 + 深度思考 + 联网搜索：deepseek-expert-r1-search (全功能 Pro)
     // --- 快捷触发 ---
     // 提示词以 "?" 或 "？" 开头，或包含 "深度思考" 字样时，逻辑上会自动开启深度思考模式。
     "model": "deepseek-expert",
