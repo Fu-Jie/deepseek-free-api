@@ -408,4 +408,4 @@ keepalive_timeout 120;
 
 ### Token Statistics
 
-Since the inference side is not in deepseek-free-api, tokens cannot be counted and will be returned as a fixed number.
+To provide more accurate statistics for downstream applications like OpenWebUI, this project integrates `gpt-tokenizer` locally to dynamically estimate token usage based on characters. Since it is not DeepSeek's official tokenizer, there may be slight discrepancies, but it is sufficient for most statistical needs.

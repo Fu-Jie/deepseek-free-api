@@ -413,4 +413,4 @@ keepalive_timeout 120;
 
 ### Token统计
 
-由于推理侧不在deepseek-free-api，因此token不可统计，将以固定数字返回。
+为了在使用 OpenWebUI 等下游应用时获得更准确的统计，本项目内置了 `gpt-tokenizer` 在本地根据字符动态估算 Token 使用量。由于并非 DeepSeek 官方的分词器，可能存在轻微误差，但足以满足大多数统计需求。

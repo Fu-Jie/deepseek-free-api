@@ -6,6 +6,7 @@ import Response from '@/lib/response/Response.ts';
 import chat from '@/api/controllers/chat.ts';
 import util from '@/lib/util.ts';
 import logger from '@/lib/logger.ts';
+import { calculateTokens, calculateMessagesTokens } from "@/lib/token.ts";
 
 const DEEP_SEEK_CHAT_AUTHORIZATION = process.env.DEEP_SEEK_CHAT_AUTHORIZATION;
 const RESPONSES_SESSION_REUSE = !['0', 'false', 'no', 'off'].includes(String(process.env.RESPONSES_SESSION_REUSE || 'true').toLowerCase());
@@ -796,8 +797,8 @@ function toResponsesPayload(chatResponse: any, resolveToolName: ToolNameResolver
     };
 }
 
-function createResponsesStream(chatStream: any, model: string, options: { onConversationId?: (responseId: string, conversationId: string) => void, resolveToolName?: ToolNameResolver } = {}) {
-    const { onConversationId, resolveToolName = createToolNameResolver() } = options;
+function createResponsesStream(chatStream: any, model: string, options: { onConversationId?: (responseId: string, conversationId: string) => void, resolveToolName?: ToolNameResolver, promptTokens?: number } = {}) {
+    const { onConversationId, resolveToolName = createToolNameResolver(), promptTokens = 1 } = options;
     const responseId = `resp_${util.uuid(false)}`;
     const itemId = `msg_${util.uuid(false)}`;
     const created = util.unixTimestamp();
@@ -1007,7 +1008,7 @@ function createResponsesStream(chatStream: any, model: string, options: { onConv
                 model,
                 output,
                 output_text: toolCalls.length ? visibleText : outputText,
-                usage: toResponsesUsage(),
+                usage: toResponsesUsage({ prompt_tokens: promptTokens, completion_tokens: calculateTokens(outputText) }),
             },
         });
         transStream.end();
@@ -1041,9 +1042,11 @@ export default {
                 throw new Error('Params body.input invalid');
 
             if (stream) {
+                const promptTokens = calculateMessagesTokens(prepared.messages);
                 const chatStream = await chat.createCompletionStream(model.toLowerCase(), prepared.messages, token, prepared.refConvId);
                 return new Response(createResponsesStream(chatStream, model, {
                     resolveToolName,
+                    promptTokens,
                     onConversationId: (responseId, conversationId) => {
                         updateResponseHistorySession(prepared.sessionKey, conversationId, normalizeInputToMessages(input, instructions, tools).length);
                     },

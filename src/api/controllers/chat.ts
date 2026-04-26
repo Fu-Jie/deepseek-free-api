@@ -7,6 +7,7 @@ import EX from "@/api/consts/exceptions.ts";
 import { DeepSeekHash } from "@/lib/challenge.ts";
 import logger from "@/lib/logger.ts";
 import util from "@/lib/util.ts";
+import { calculateTokens, calculateMessagesTokens } from "@/lib/token.ts";
 
 // 模型名称
 const MODEL_NAME = "deepseek-chat";
@@ -246,7 +247,9 @@ async function createCompletion(
     const prompt = refConvId ? messagesPrepare([messages[messages.length - 1]]) : messagesPrepare(messages);
 
     // 解析引用对话ID
-    const [refSessionId, refParentMsgId] = refConvId?.split('@') || [];
+    const parts = refConvId?.split('@') || [];
+    const refSessionId = parts[0];
+    const refParentMsgId = parts.length > 1 ? parts[parts.length - 1] : undefined;
 
     // 请求流
     const token = await acquireToken(refreshToken);
@@ -317,7 +320,8 @@ async function createCompletion(
 
     const streamStartTime = util.timestamp();
     // 接收流为输出文本
-    const answer = await receiveStream(model, result.data, sessionId);
+    const promptTokens = calculateMessagesTokens(messages);
+    const answer = await receiveStream(model, result.data, sessionId, promptTokens);
     logger.success(
       `Stream has completed transfer ${util.timestamp() - streamStartTime}ms`
     );
@@ -369,7 +373,9 @@ async function createCompletionStream(
     const prompt = refConvId ? messagesPrepare([messages[messages.length - 1]]) : messagesPrepare(messages);
 
     // 解析引用对话ID
-    const [refSessionId, refParentMsgId] = refConvId?.split('@') || [];
+    const parts = refConvId?.split('@') || [];
+    const refSessionId = parts[0];
+    const refParentMsgId = parts.length > 1 ? parts[parts.length - 1] : undefined;
 
     const isSearchModel = model.includes('search');
     const isThinkingModel = model.includes('think') || model.includes('r1') || prompt.includes('深度思考') || prompt.startsWith('?') || prompt.startsWith('？');
@@ -441,7 +447,7 @@ async function createCompletionStream(
               finish_reason: "stop",
             },
           ],
-          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          usage: { prompt_tokens: calculateMessagesTokens(messages), completion_tokens: 0, total_tokens: calculateMessagesTokens(messages) },
           created: util.unixTimestamp(),
         })}\n\n`
       );
@@ -554,7 +560,7 @@ function getFragmentInitialContent(fragment: any) {
   return typeof fragment.content === 'string' ? fragment.content : '';
 }
 
-async function receiveStream(model: string, stream: any, refConvId?: string): Promise<any> {
+async function receiveStream(model: string, stream: any, refConvId?: string, promptTokens: number = 1): Promise<any> {
   const { createParser } = await import("eventsource-parser");
   logger.info(`[NON-STREAM] Receiving stream to accumulate full response for model: ${model}`);
   let accumulatedContent = "";
@@ -640,6 +646,7 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
       if (accumulatedContent.endsWith('FINISHED')) {
         logger.warn(`[NON-STREAM] WARNING: Content ends with FINISHED! Accumulated: ${accumulatedContent.slice(-20)}`);
       }
+      const completionTokens = calculateTokens(accumulatedContent + accumulatedThinkingContent);
       const finalResponse = {
         id: `${refConvId}@${messageId}`,
         model,
@@ -653,7 +660,7 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
           },
           finish_reason: "stop",
         }],
-        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }, // Mocked
+        usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens },
         created,
       };
       logger.success(`[NON-STREAM] Resolving with final response: ${JSON.stringify(finalResponse, null, 2)}`);

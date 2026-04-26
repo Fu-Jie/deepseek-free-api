@@ -5,6 +5,8 @@ import Request from '@/lib/request/Request.ts';
 import Response from '@/lib/response/Response.ts';
 import chat from '@/api/controllers/chat.ts';
 import util from '@/lib/util.ts';
+import logger from '@/lib/logger.ts';
+import { calculateTokens, calculateMessagesTokens } from "@/lib/token.ts";
 
 const DEEP_SEEK_CHAT_AUTHORIZATION = process.env.DEEP_SEEK_CHAT_AUTHORIZATION;
 const ANTHROPIC_SESSION_REUSE = ['1', 'true', 'yes', 'on'].includes(String(process.env.ANTHROPIC_SESSION_REUSE || '').toLowerCase());
@@ -434,8 +436,8 @@ function hasExplicitToolCallStart(text: string) {
     return /<tool_call\b|Assistant requested tool|(?:^|\n)\s*[A-Za-z][A-Za-z0-9_\-.]*\s*\(\s*\{/i.test(text);
 }
 
-function createAnthropicStream(chatStream: any, model: string, options: { deferOutput?: boolean, onConversationId?: (conversationId: string) => void } = {}) {
-    const { deferOutput = false, onConversationId } = options;
+function createAnthropicStream(chatStream: any, model: string, options: { deferOutput?: boolean, onConversationId?: (conversationId: string) => void, promptTokens?: number } = {}) {
+    const { deferOutput = false, onConversationId, promptTokens = 1 } = options;
     const messageId = `msg_${util.uuid(false)}`;
     const transStream = new PassThrough();
     let buffer = '';
@@ -462,7 +464,7 @@ function createAnthropicStream(chatStream: any, model: string, options: { deferO
             content: [],
             stop_reason: null,
             stop_sequence: null,
-            usage: { input_tokens: 1, output_tokens: 0 },
+            usage: { input_tokens: promptTokens, output_tokens: 0 },
         },
     });
 
@@ -579,10 +581,11 @@ function createAnthropicStream(chatStream: any, model: string, options: { deferO
         if (textBlockStarted)
             writeEvent('content_block_stop', { type: 'content_block_stop', index: textBlockIndex });
         content.forEach(writeContentBlock);
+        const outputTokens = calculateTokens(outputText);
         writeEvent('message_delta', {
             type: 'message_delta',
             delta: { stop_reason: hasToolUse ? 'tool_use' : 'end_turn', stop_sequence: null },
-            usage: { output_tokens: 1 },
+            usage: { output_tokens: outputTokens },
         });
         writeEvent('message_stop', {
             type: 'message_stop',
@@ -594,7 +597,7 @@ function createAnthropicStream(chatStream: any, model: string, options: { deferO
                 content,
                 stop_reason: hasToolUse ? 'tool_use' : 'end_turn',
                 stop_sequence: null,
-                usage: { input_tokens: 1, output_tokens: 1 },
+                usage: { input_tokens: promptTokens, output_tokens: outputTokens },
             },
         });
         transStream.end();
@@ -622,9 +625,11 @@ async function handleMessages(request: Request) {
         throw new Error('Params body.messages invalid');
 
     if (stream) {
+        const promptTokens = calculateMessagesTokens(prepared.messages);
         const chatStream = await chat.createCompletionStream(model.toLowerCase(), prepared.messages, token, prepared.refConvId);
         return new Response(createAnthropicStream(chatStream, model, {
             onConversationId: (conversationId) => updateSession(prepared.sessionKey, conversationId, messages.length),
+            promptTokens
         }), {
             type: 'text/event-stream',
         });
