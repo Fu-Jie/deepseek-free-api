@@ -588,8 +588,9 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
           logger.info(`[NON-STREAM PATH] p="${chunk.p}" o="${chunk.o || ''}" vType=${vType} vPreview=${vPreview} currentPath=${currentPath}`);
         }
 
-        if (Array.isArray(chunk.v) && chunk.v.length) {
-          for (const fragment of chunk.v) {
+        const fragments = Array.isArray(chunk.v) ? chunk.v : (chunk.v?.response?.fragments || []);
+        if (fragments.length) {
+          for (const fragment of fragments) {
             const fragType = fragment.type;
             if (fragType === 'THINK') currentPath = 'thinking';
             else if (fragType === 'RESPONSE') currentPath = 'content';
@@ -728,8 +729,9 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
       }
 
       let fragmentInitialDeltas: Array<{ content: string, path: 'thinking' | 'content' }> = [];
-      if (Array.isArray(chunk.v) && chunk.v.length) {
-        for (const fragment of chunk.v) {
+      const fragments = Array.isArray(chunk.v) ? chunk.v : (chunk.v?.response?.fragments || []);
+      if (fragments.length) {
+        for (const fragment of fragments) {
           const fragType = fragment.type;
           if (fragType === 'THINK') currentPath = 'thinking';
           else if (fragType === 'RESPONSE') currentPath = 'content';
