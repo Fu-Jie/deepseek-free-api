@@ -549,6 +549,11 @@ function checkResult(result: AxiosResponse, refreshToken: string) {
   throw new APIException(EX.API_REQUEST_FAILED, `[请求deepseek失败]: ${msg}`);
 }
 
+function getFragmentInitialContent(fragment: any) {
+  if (!fragment || typeof fragment !== 'object') return '';
+  return typeof fragment.content === 'string' ? fragment.content : '';
+}
+
 async function receiveStream(model: string, stream: any, refConvId?: string): Promise<any> {
   const { createParser } = await import("eventsource-parser");
   logger.info(`[NON-STREAM] Receiving stream to accumulate full response for model: ${model}`);
@@ -583,14 +588,24 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
           logger.info(`[NON-STREAM PATH] p="${chunk.p}" o="${chunk.o || ''}" vType=${vType} vPreview=${vPreview} currentPath=${currentPath}`);
         }
 
+        if (Array.isArray(chunk.v) && chunk.v.length) {
+          for (const fragment of chunk.v) {
+            const fragType = fragment.type;
+            if (fragType === 'THINK') currentPath = 'thinking';
+            else if (fragType === 'RESPONSE') currentPath = 'content';
+
+            const initialContent = getFragmentInitialContent(fragment);
+            if (initialContent) {
+              if (currentPath === 'thinking') accumulatedThinkingContent += initialContent;
+              else accumulatedContent += initialContent;
+            }
+          }
+        }
+
         // Update current path if specified (DeepSeek uses fragments for thinking)
         if (chunk.p) {
           if (chunk.p.includes('fragments')) {
-            if (chunk.v && Array.isArray(chunk.v) && chunk.v[0]) {
-              const fragType = chunk.v[0].type;
-              if (fragType === 'THINK') currentPath = 'thinking';
-              else if (fragType === 'RESPONSE') currentPath = 'content';
-            } else if (chunk.p.endsWith('/content')) {
+            if (chunk.p.endsWith('/content')) {
               // Path like response/fragments/-1/content
               // currentPath should already be set by the last APPEND fragment
             }
@@ -712,20 +727,60 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         logger.info(`[STREAM PATH] p="${chunk.p}" o="${chunk.o || ''}" vType=${vType} vPreview=${vPreview} currentPath=${currentPath}`);
       }
 
+      let fragmentInitialDeltas: Array<{ content: string, path: 'thinking' | 'content' }> = [];
+      if (Array.isArray(chunk.v) && chunk.v.length) {
+        for (const fragment of chunk.v) {
+          const fragType = fragment.type;
+          if (fragType === 'THINK') currentPath = 'thinking';
+          else if (fragType === 'RESPONSE') currentPath = 'content';
+
+          const initialContent = getFragmentInitialContent(fragment);
+          if (initialContent)
+            fragmentInitialDeltas.push({ content: initialContent, path: currentPath === 'thinking' ? 'thinking' : 'content' });
+        }
+      }
+
       if (chunk.p) {
         if (chunk.p.includes('fragments')) {
-          if (chunk.v && Array.isArray(chunk.v) && chunk.v[0]) {
-            const fragType = chunk.v[0].type;
-            if (fragType === 'THINK') currentPath = 'thinking';
-            else if (fragType === 'RESPONSE') currentPath = 'content';
-          }
-          // Note: If it's fragments/.../content, currentPath is already sticky
+            // Note: If it's fragments/.../content, currentPath is already sticky
         } else if (chunk.p.includes('thinking_content') || chunk.p.includes('thought')) {
           currentPath = 'thinking';
         } else if (chunk.p.includes('response/content')) {
           currentPath = 'content';
         }
         logger.info(`[STREAM PATH] => currentPath is now: ${currentPath}`);
+      }
+
+      for (const fragmentDelta of fragmentInitialDeltas) {
+        const delta: { role?: string, content?: string, reasoning_content?: string } = {};
+        if (isFirstChunk) {
+          delta.role = "assistant";
+          isFirstChunk = false;
+        }
+        const content = isSearchSilentModel
+          ? fragmentDelta.content.replace(/\[citation:(\d+)\]/g, '')
+          : fragmentDelta.content.replace(/\[citation:(\d+)\]/g, '[$1]');
+        if (fragmentDelta.path === 'thinking') {
+          if (isSilentModel) continue;
+          if (isFoldModel) {
+            if (!thinkingStarted) {
+              thinkingStarted = true;
+              delta.content = `<details><summary>思考过程</summary>${content}`;
+            } else {
+              delta.content = content;
+            }
+          } else {
+            delta.reasoning_content = content;
+          }
+        } else {
+          if (isFoldModel && thinkingStarted) {
+            delta.content = `</details>${content}`;
+            thinkingStarted = false;
+          } else {
+            delta.content = content;
+          }
+        }
+        transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: null }], created })}\n\n`);
       }
 
       // Debug log for troubleshooting stream content
