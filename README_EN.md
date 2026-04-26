@@ -1,4 +1,9 @@
-# DeepSeek V3 Free Service
+# DeepSeek V4 Free Service (Continuous Maintenance)
+
+> **⚠️ Note**: The original project `llm-red-team/deepseek-free-api` is archived. This is a **maintained fork** designed to fix protocol incompatibilities (e.g., `ERR_INVALID_CHAR` and `FINISHED` code leakage) caused by official updates, ensuring continuous availability.
+>
+> [!TIP]
+> **New Project Recommendation**: [MiMo Free API MCP](https://github.com/Fu-Jie/mimo-free-api-mcp), a next-generation gateway based on Xiaomi's LLM with native HTTP MCP support, is now available!
 
 <span>[ <a href="README.md">中文</a> | English ]</span>
 
@@ -15,19 +20,52 @@ Supports high-speed streaming output, multi-turn conversation, internet search, 
 
 ## Recent Updates
 
+- **DeepSeek-V4 Support** (2026-04-24): Fully adapted to the latest **DeepSeek-V4** preview release.
+  - Supports `deepseek-v4-pro` and `deepseek-v4-flash` models.
+  - Context window expanded to **1M (one million)** tokens.
+  - Optimized for Agents (e.g., Claude Code) with improved response stability.
+  - Note: Official `deepseek-chat` and `deepseek-reasoner` models will be deprecated on 2026-07-24.
+- **Expert Mode Support** (2026-04-08): Perfectly adapted to the new **"Expert Mode"** by reverse-engineering the official web protocol.
+  - Automatically injects `model_type: "expert"` parameter to trigger stronger reasoning capabilities.
+  - Resolved the `missing field chat_session_id` issue by correcting the ID extraction path.
+  - See: [DeepSeek Expert Mode Reverse Engineering Report](./REVERSE_ENGINEERING_EXPERT_MODE.md)
 - **Compatibility Fix** (2025-02-11): Resolved the `ERR_INVALID_CHAR` error triggered by DeepSeek website architecture changes.
-- **Output Purification**: Fixed the `FINISHED` internal status code leakage. Implemented strict path validation to guarantee that only actual model content is appended to your responses.
-- **History Sanitization**: Automatically strips residual `FINISHED` artifacts from older message histories to maintain clean context.
-- **R1 Search Support** (2025-02-12): Perfectly adapted to the DeepSeek R1 model's internet search functionality.
-  - Automatically parses and merges fragmented search results.
-  - Citations are appended to the response in `**1.** [Title](URL)` format, ensuring visibility across all clients.
-  - Filters out "SEARCH" metadata interference for a cleaner output experience.
-- **Deep Thinking Protocol Adaptation** (2025-02-24): Deeply adapted to DeepSeek's latest **Fragment-based protocol** (v1.0.2).
-  - Perfectly resolves the issue where the R1 model's thinking process (Thinking/Reasoning Content) was mixed with the official response.
-  - Implemented real-time status tracking based on Fragment types, ensuring the thinking process is correctly placed in the `reasoning_content` field.
-  - Optimized "Sticky Path" parsing, significantly improving the stability of streaming output.
 
-Fully compatible with ChatGPT interface.
+## Features
+
+### 1. Supported Model List
+
+This project dynamically injects official protocol parameters by parsing keywords in the model name. Features can be combined freely:
+
+| Model ID | Target Backend | Expert Mode | Deep Thinking | Search | Description |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| `deepseek` | **V4-Flash** | ❌ | ❌ | ❌ | Basic chat mode |
+| `deepseek-expert` | **V4-Pro** | ✅ | ❌ | ❌ | **Recommended**: Expert enhanced mode (1M context, Agent-optimized) |
+| `deepseek-r1` | **V4-Flash** | ❌ | ✅ | ❌ | Official R1 deep thinking mode |
+| `deepseek-search` | **V4-Flash** | ❌ | ❌ | ✅ | Official internet search mode |
+| `deepseek-expert-r1` | **V4-Pro** | ✅ | ✅ | ❌ | **Top Reasoning**: V4 Pro + Deep Thinking |
+| `deepseek-expert-search` | **V4-Pro** | ✅ | ❌ | ✅ | V4 Pro + Internet Search |
+| `deepseek-r1-search` | **V4-Flash** | ❌ | ✅ | ✅ | Deep Thinking + Search |
+| `deepseek-expert-r1-search` | **V4-Pro** | ✅ | ✅ | ✅ | **Ultimate**: V4 Pro + Thinking + Search |
+
+> **Mapping Logic**: No need to change your model names. The system automatically identifies: names containing `expert` call **V4-Pro**; others default to **V4-Flash**. Include `think` or `r1` for deep thinking, and `search` for internet search. Suffixes `-silent` and `-fold` are supported.
+
+### 2. Magic Triggers
+
+Trigger deep thinking in any model without changing the model name:
+- Start your prompt with `?` or `？`.
+- Include the phrase `deep thinking` or `深度思考` in your prompt.
+
+### 3. Continuous Conversation
+
+Supports native continuous conversation via `conversation_id` (using server-side memory instead of uploading full history).
+
+- **Usage**: Add `"conversation_id": "YOUR_ID"` to the request body.
+- **ID Source**: The `id` field from each API response is the `conversation_id` for the next turn.
+- **Format**: `session_id@parent_message_id`.
+- **Advantages**:
+  - **Save Bandwidth**: No need to resend full chat history.
+  - **Native Experience**: Inherits search results, thinking process, and expert state from previous turns.
 
 Here are ten more free APIs for your attention:
 
@@ -270,13 +308,14 @@ Request data:
 ```json
 {
     // model name
-    // default: deepseek
-    // deep thinking: deepseek-think or deepseek-r1
+    // default: deepseek (maps to deepseek-v4-flash)
+    // expert mode: deepseek-expert (maps to deepseek-v4-pro, Recommended)
+    // deep thinking: deepseek-r1
     // internet search: deepseek-search
-    // deep thinking + internet search: deepseek-r1-search (Recommended) or deepseek-think-search
-    // Note: Search results will automatically be appended to the end of the response as a bolded numbered list
-    // silent mode (no output of thinking process or internet search results): deepseek-think-silent or deepseek-r1-silent or deepseek-search-silent
-    // deep thinking but the thinking process is wrapped with <details> collapsible tags (requires page support for display): deepseek-think-fold or deepseek-r1-fold
+    // --- Combination Examples ---
+    // Expert + Deep Thinking: deepseek-expert-r1 (V4-Pro + Reasoning)
+    // Expert + Search: deepseek-expert-search (V4-Pro + Search)
+    // Expert + Thinking + Search: deepseek-expert-r1-search (Full Pro)
     "model": "deepseek",
     // default multi-turn conversation is implemented based on message merging, which may lead to reduced capabilities in some scenarios and is limited by the maximum token number per round
     // if you want to get the native multi-turn conversation experience, you can pass in the id obtained from the previous round of messages to continue the context
