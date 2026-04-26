@@ -20,7 +20,7 @@ Supports high-speed streaming output, multi-turn conversation, internet search, 
 
 ## Recent Updates
 
-- **Agent Ecosystem & Multi-Protocol Enhancement** (2026-04-26): Significantly improved compatibility with Agent clients and fixed streaming output anomalies. **⚠️ Note: Due to reverse engineering limitations, tool calling is highly unstable and unsuited for rigorous Agent tasks. If conditions permit, we strongly recommend recharging and using the official DeepSeek API for a native experience.**
+- **Agent Ecosystem & Multi-Protocol Enhancement** (2026-04-26): Significantly improved compatibility with Agent clients and fixed streaming output anomalies. **⚠️ Note: Due to reverse engineering limitations, tool calling is unstable and unsuited for rigorous Agent tasks. If conditions permit, we strongly recommend recharging and using the official DeepSeek API for a native experience.**
   - **Expanded Protocol Endpoints**: Added support for OpenAI Responses API (`/v1/responses`) and Anthropic Messages API (`/messages`), deeply adapted for **Codex CLI** and **Claude Code**. Includes tool parsing, format conversion, and mapping `reasoning_content` to Anthropic thinking deltas.
   - **Smart Session Reuse**: For clients without an explicit `conversation_id`, generates stable fingerprints from previous messages to automatically reuse the same DeepSeek session. This alleviates context bloat and session fragmentation caused by Agents sending full histories, supported by a TTL cleanup mechanism.
   - **Streaming Protocol Fix**: Unified the handling of initial fragments nested in `v.response.fragments` under the latest SSE protocol, completely resolving the bug where initial characters of replies were lost.
@@ -116,7 +116,7 @@ Emohaa API [emohaa-free-api](https://github.com/LLM-Red-Team/emohaa-free-api)
 ## Disclaimer
 
 > [!CAUTION]
-> **Tool Calling Warning**: Support for tool calling is implemented via prompt simulation and regex parsing. It is **highly unstable** and does not support the native OpenAI Tools protocol. Use for experimental purposes only.
+> **Tool Calling Warning**: Support for tool calling is implemented via prompt simulation and regex parsing. It is **unstable** and does not support the native OpenAI Tools protocol. Use for experimental purposes only.
 
 **Reverse-engineered APIs are unstable. It is recommended to use the official DeepSeek API at <https://platform.deepseek.com/> to avoid the risk of being banned.**
 

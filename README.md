@@ -132,7 +132,7 @@ curl -X POST http://127.0.0.1:8000/v1/chat/completions \
 
 ## 最近更新
 
-- **Agent 生态与多协议增强** (2026-04-26): 大幅提升对各类 Agent 客户端的兼容性，并修复流式输出异常。**⚠️ 注意：受逆向工程局限，工具调用极不稳定，无法胜任严谨的 Agent 任务。如有条件，强烈建议充值使用 DeepSeek 官方 API 获取原生体验。**
+- **Agent 生态与多协议增强** (2026-04-26): 大幅提升对各类 Agent 客户端的兼容性，并修复流式输出异常。**⚠️ 注意：受逆向工程局限，工具调用不稳定，无法胜任严谨的 Agent 任务。如有条件，强烈建议充值使用 DeepSeek 官方 API 获取原生体验。**
   - **多协议端点扩展**：新增支持 OpenAI Responses API (`/v1/responses`) 和 Anthropic Messages API (`/messages`)，深度适配 **Codex CLI** 和 **Claude Code**。涵盖工具解析转换、流式响应适配，以及 `reasoning_content` 到 Anthropic thinking delta 的无缝映射。
   - **智能会话复用 (Session Reuse)**：针对未显式提供 `conversation_id` 的客户端，通过前序消息生成指纹，自动复用同一 DeepSeek 会话。大幅缓解 Agent 客户端全量历史重放带来的上下文膨胀和多会话分裂，并支持 TTL 自动清理机制。
   - **流式协议修复**：统一处理官网最新 SSE 协议中嵌套于 `v.response.fragments` 的初始片段，彻底解决部分回复开头字符丢失（如实际返回“你好”，客户端仅收到“好”）的体验 Bug。
@@ -189,7 +189,7 @@ curl -X POST http://127.0.0.1:8000/v1/chat/completions \
 ## 免责声明
 
 > [!CAUTION]
-> **工具调用 (Tool Calling) 警告**：本项目对工具调用的支持基于提示词模拟与正则解析，**极不稳定**，且不支持原生 OpenAI Tools 协议，仅供实验性测试，请勿在生产环境使用。
+> **工具调用 (Tool Calling) 警告**：本项目对工具调用的支持基于提示词模拟与正则解析，**不稳定**，且不支持原生 OpenAI Tools 协议，仅供实验性测试，请勿在生产环境使用。
 
 **逆向API是不稳定的，建议前往DeepSeek官方 <https://platform.deepseek.com/> 付费使用API，避免封禁的风险。**
 
