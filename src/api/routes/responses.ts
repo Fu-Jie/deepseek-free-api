@@ -514,7 +514,7 @@ function shellCommandToArgs(command: any): string[] {
     if (_.isArray(command)) return command.map(String);
     const commandText = String(command || '').trim();
     if (!commandText) return [];
-    return ['powershell.exe', '-Command', commandText];
+    return process.platform === 'win32' ? ['powershell.exe', '-Command', commandText] : ['/bin/sh', '-c', commandText];
 }
 
 function adaptToolArgs(tool: any, args: Record<string, any>) {
