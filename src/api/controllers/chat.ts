@@ -588,22 +588,24 @@ async function receiveStream(model: string, stream: any, refConvId?: string): Pr
           logger.info(`[NON-STREAM PATH] p="${chunk.p}" o="${chunk.o || ''}" vType=${vType} vPreview=${vPreview} currentPath=${currentPath}`);
         }
 
+        if (Array.isArray(chunk.v) && chunk.v.length) {
+          for (const fragment of chunk.v) {
+            const fragType = fragment.type;
+            if (fragType === 'THINK') currentPath = 'thinking';
+            else if (fragType === 'RESPONSE') currentPath = 'content';
+
+            const initialContent = getFragmentInitialContent(fragment);
+            if (initialContent) {
+              if (currentPath === 'thinking') accumulatedThinkingContent += initialContent;
+              else accumulatedContent += initialContent;
+            }
+          }
+        }
+
         // Update current path if specified (DeepSeek uses fragments for thinking)
         if (chunk.p) {
           if (chunk.p.includes('fragments')) {
-            if (chunk.v && Array.isArray(chunk.v) && chunk.v[0]) {
-              for (const fragment of chunk.v) {
-                const fragType = fragment.type;
-                if (fragType === 'THINK') currentPath = 'thinking';
-                else if (fragType === 'RESPONSE') currentPath = 'content';
-
-                const initialContent = getFragmentInitialContent(fragment);
-                if (initialContent) {
-                  if (currentPath === 'thinking') accumulatedThinkingContent += initialContent;
-                  else accumulatedContent += initialContent;
-                }
-              }
-            } else if (chunk.p.endsWith('/content')) {
+            if (chunk.p.endsWith('/content')) {
               // Path like response/fragments/-1/content
               // currentPath should already be set by the last APPEND fragment
             }
@@ -725,22 +727,23 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
         logger.info(`[STREAM PATH] p="${chunk.p}" o="${chunk.o || ''}" vType=${vType} vPreview=${vPreview} currentPath=${currentPath}`);
       }
 
-        let fragmentInitialDeltas: Array<{ content: string, path: 'thinking' | 'content' }> = [];
-        if (chunk.p) {
-          if (chunk.p.includes('fragments')) {
-            if (chunk.v && Array.isArray(chunk.v) && chunk.v[0]) {
-              for (const fragment of chunk.v) {
-                const fragType = fragment.type;
-                if (fragType === 'THINK') currentPath = 'thinking';
-                else if (fragType === 'RESPONSE') currentPath = 'content';
+      let fragmentInitialDeltas: Array<{ content: string, path: 'thinking' | 'content' }> = [];
+      if (Array.isArray(chunk.v) && chunk.v.length) {
+        for (const fragment of chunk.v) {
+          const fragType = fragment.type;
+          if (fragType === 'THINK') currentPath = 'thinking';
+          else if (fragType === 'RESPONSE') currentPath = 'content';
 
-                const initialContent = getFragmentInitialContent(fragment);
-                if (initialContent)
-                  fragmentInitialDeltas.push({ content: initialContent, path: currentPath === 'thinking' ? 'thinking' : 'content' });
-              }
-            }
+          const initialContent = getFragmentInitialContent(fragment);
+          if (initialContent)
+            fragmentInitialDeltas.push({ content: initialContent, path: currentPath === 'thinking' ? 'thinking' : 'content' });
+        }
+      }
+
+      if (chunk.p) {
+        if (chunk.p.includes('fragments')) {
             // Note: If it's fragments/.../content, currentPath is already sticky
-          } else if (chunk.p.includes('thinking_content') || chunk.p.includes('thought')) {
+        } else if (chunk.p.includes('thinking_content') || chunk.p.includes('thought')) {
           currentPath = 'thinking';
         } else if (chunk.p.includes('response/content')) {
           currentPath = 'content';

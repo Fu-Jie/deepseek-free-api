@@ -427,11 +427,11 @@ function mayBecomeToolCallPrefix(text: string) {
     if (/^<tool_call\b/i.test(trimmed)) return true;
     if (/^Assistant requested tool\b/.test(trimmed)) return true;
 
-    const firstLine = trimmed.split(/\r?\n/, 1)[0];
-    if (/^[A-Za-z][A-Za-z0-9_\-.]*\s*\($/.test(firstLine)) return true;
-    if (/^[A-Za-z][A-Za-z0-9_\-.]*$/.test(firstLine)) return true;
-
     return false;
+}
+
+function hasExplicitToolCallStart(text: string) {
+    return /<tool_call\b|Assistant requested tool|(?:^|\n)\s*[A-Za-z][A-Za-z0-9_\-.]*\s*\(\s*\{/i.test(text);
 }
 
 function createAnthropicStream(chatStream: any, model: string, options: { deferOutput?: boolean, onConversationId?: (conversationId: string) => void } = {}) {
@@ -442,6 +442,8 @@ function createAnthropicStream(chatStream: any, model: string, options: { deferO
     let outputText = '';
     let textBlockStarted = false;
     let textBlockIndex = 0;
+    let thinkingBlockStarted = false;
+    let thinkingBlockStopped = false;
     let deferredToolMode = false;
     let streamedTextLength = 0;
 
@@ -463,6 +465,31 @@ function createAnthropicStream(chatStream: any, model: string, options: { deferO
             usage: { input_tokens: 1, output_tokens: 0 },
         },
     });
+
+    const writeThinkingDelta = (thinking: string) => {
+        if (!thinking) return;
+        if (!thinkingBlockStarted) {
+            writeEvent('content_block_start', {
+                type: 'content_block_start',
+                index: 0,
+                content_block: { type: 'thinking', thinking: '', signature: '' },
+            });
+            thinkingBlockStarted = true;
+            textBlockIndex = 1;
+        }
+        writeEvent('content_block_delta', {
+            type: 'content_block_delta',
+            index: 0,
+            delta: { type: 'thinking_delta', thinking },
+        });
+    };
+
+    const stopThinkingBlock = () => {
+        if (!thinkingBlockStarted || thinkingBlockStopped) return;
+        writeEvent('content_block_stop', { type: 'content_block_stop', index: 0 });
+        thinkingBlockStopped = true;
+    };
+
     const processLine = (line: string) => {
         const trimmed = line.trim();
         if (!trimmed.startsWith('data:')) return;
@@ -473,10 +500,13 @@ function createAnthropicStream(chatStream: any, model: string, options: { deferO
         const chunkId = _.get(chunk, 'id');
         if (_.isString(chunkId) && /[0-9a-z\-]{36}@[0-9]+/.test(chunkId))
             onConversationId?.(chunkId);
+        const reasoningDelta = _.get(chunk, 'choices[0].delta.reasoning_content') || '';
+        if (reasoningDelta) writeThinkingDelta(reasoningDelta);
         const delta = _.get(chunk, 'choices[0].delta.content') || '';
         if (!delta) return;
+        stopThinkingBlock();
         outputText += delta;
-        if (deferredToolMode || /<tool_call|Assistant requested tool|(?:^|\n)\s*[A-Za-z][A-Za-z0-9_\-.]*\s*\(/.test(outputText.slice(streamedTextLength))) {
+        if (deferredToolMode || hasExplicitToolCallStart(outputText.slice(streamedTextLength))) {
             deferredToolMode = true;
             return;
         }
@@ -545,6 +575,7 @@ function createAnthropicStream(chatStream: any, model: string, options: { deferO
     chatStream.once('close', () => {
         if (buffer) processLine(buffer);
         const { content, hasToolUse } = toAnthropicContentBlocks(outputText);
+        stopThinkingBlock();
         if (textBlockStarted)
             writeEvent('content_block_stop', { type: 'content_block_stop', index: textBlockIndex });
         content.forEach(writeContentBlock);
@@ -593,7 +624,6 @@ async function handleMessages(request: Request) {
     if (stream) {
         const chatStream = await chat.createCompletionStream(model.toLowerCase(), prepared.messages, token, prepared.refConvId);
         return new Response(createAnthropicStream(chatStream, model, {
-            deferOutput: true,
             onConversationId: (conversationId) => updateSession(prepared.sessionKey, conversationId, messages.length),
         }), {
             type: 'text/event-stream',
