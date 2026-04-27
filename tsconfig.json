@@ -1,6 +1,7 @@
 {
     "compilerOptions": {
       "baseUrl": ".",
+      "ignoreDeprecations": "5.0",
       "module": "NodeNext",
       "moduleResolution": "NodeNext",
       "allowImportingTsExtensions": true,

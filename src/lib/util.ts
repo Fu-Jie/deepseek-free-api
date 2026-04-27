@@ -302,6 +302,87 @@ const util = {
     });
     return result.data.toString("base64");
   },
+
+  decodeXmlText(text: string): string {
+    if (!text) return "";
+    return text
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .replace(/&#10;/g, "\n")
+      .replace(/&#13;/g, "\r");
+  },
+
+  findJsonEnd(text: string, startIndex: number): number {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = startIndex; i < text.length; i++) {
+      const char = text[i];
+      if (inString) {
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (char === "\\") {
+          escaped = true;
+          continue;
+        }
+        if (char === '"') inString = false;
+        continue;
+      }
+      if (char === '"') {
+        inString = true;
+        continue;
+      }
+      if (char === "{") depth++;
+      if (char === "}") {
+        depth--;
+        if (depth === 0) return i + 1;
+      }
+    }
+
+    return -1;
+  },
+
+  parseToolInput(input: string): any {
+    if (!input) return {};
+    const trimmed = input.trim();
+    try {
+      return JSON.parse(trimmed);
+    } catch (e) {
+      // 尝试清理控制字符
+      try {
+        const cleaned = trimmed.replace(/[\x00-\x1F\x7F-\x9F]/g, (c) => {
+          if (c === "\n") return "\\n";
+          if (c === "\r") return "\\r";
+          if (c === "\t") return "\\t";
+          return `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`;
+        });
+        return JSON.parse(cleaned);
+      } catch (e2) {
+        // 尝试匹配单字段 JSON: {"field": "value"}
+        const singleStringField = trimmed.match(/^\s*\{\s*"([^"\\]+)"\s*:\s*"([\s\S]*)"\s*\}\s*$/);
+        if (singleStringField) {
+          return { [singleStringField[1]]: singleStringField[2] };
+        }
+        // 最后尝试：如果看起来像是一个裸字符串，包装成对象
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+          return { input: trimmed };
+        }
+        return {};
+      }
+    }
+  },
+
+  isInsideMarkdownFence(text: string, index: number): boolean {
+    const before = text.slice(0, index);
+    const fences = before.match(/^\s*```/gm);
+    return Boolean(fences && fences.length % 2 === 1);
+  },
 };
 
 export default util;

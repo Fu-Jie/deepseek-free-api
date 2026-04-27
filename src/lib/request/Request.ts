@@ -47,6 +47,7 @@ export default class Request {
         this.query = ctx.query || {};
         this.params = ctx.params || {};
         this.body = ctx.request.body || {};
+        (this as any)._ctx = ctx;
         this.files = ctx.request.files || {};
         this.remoteIP = this.headers["X-Real-IP"] || this.headers["x-real-ip"] || this.headers["X-Forwarded-For"] || this.headers["x-forwarded-for"] || ctx.ip || null;
         this.time = Number(_.defaultTo(time, util.timestamp()));

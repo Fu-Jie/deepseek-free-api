@@ -4,6 +4,7 @@ import axios, { AxiosResponse } from "axios";
 
 import APIException from "@/lib/exceptions/APIException.ts";
 import EX from "@/api/consts/exceptions.ts";
+import { type AuditContext, appendAuditEvent, serializeError, summarizeMessages, tapStreamForAudit } from "@/lib/audit-log.ts";
 import { DeepSeekHash } from "@/lib/challenge.ts";
 import logger from "@/lib/logger.ts";
 import util from "@/lib/util.ts";
@@ -50,6 +51,135 @@ const accessTokenMap = new Map();
 // access_token请求队列映射
 const accessTokenRequestQueueMap: Record<string, Function[]> = {};
 
+function maskToken(token: string) {
+  if (!token) return '';
+  if (token.length <= 8) return `${token.slice(0, 2)}***${token.slice(-2)}`;
+  return `${token.slice(0, 4)}...${token.slice(-4)}`;
+}
+
+function isConversationId(value: any) {
+  return _.isString(value) && /[0-9a-z\-]{36}@[0-9]+/.test(value);
+}
+
+function splitConversationId(value: string) {
+  if (!isConversationId(value)) return null;
+  const parts = value.split('@');
+  const sessionId = parts[0];
+  const messageId = Number(parts[parts.length - 1]);
+  if (!sessionId || !Number.isFinite(messageId)) return null;
+  return { sessionId, messageId };
+}
+
+function parseDeepSeekErrorBody(bodyText: string) {
+  const raw = String(bodyText || '').trim();
+  const parsed = _.attempt(() => JSON.parse(raw));
+  if (_.isError(parsed) || !_.isObject(parsed)) {
+    return {
+      raw,
+      envelope: null,
+      data: null,
+      bizCode: undefined,
+      bizMsg: '',
+    };
+  }
+
+  const envelope = parsed as any;
+  const data = _.get(envelope, 'data');
+  return {
+    raw,
+    envelope,
+    data,
+    bizCode: _.get(data, 'biz_code') ?? _.get(envelope, 'biz_code'),
+    bizMsg: String(_.get(data, 'biz_msg') || _.get(envelope, 'biz_msg') || _.get(envelope, 'msg') || '').trim(),
+  };
+}
+
+function isInvalidMessageIdPayload(payload: any) {
+  const bizCode = _.get(payload, 'bizCode') ?? _.get(payload, 'biz_code') ?? _.get(payload, 'data.biz_code');
+  const bizMsg = String(_.get(payload, 'bizMsg') || _.get(payload, 'biz_msg') || _.get(payload, 'data.biz_msg') || '').toLowerCase();
+  return bizCode === 26 || bizMsg.includes('invalid message id');
+}
+
+function createInvalidStreamResponseError(contentType: string, parsedError: any) {
+  const suffix = parsedError?.bizMsg
+    ? `: ${parsedError.bizMsg}`
+    : parsedError?.raw
+      ? `: ${parsedError.raw.slice(0, 200)}`
+      : '';
+  return new APIException(
+    EX.API_REQUEST_FAILED,
+    `Stream response Content-Type invalid: ${contentType}${suffix}`,
+  ).setData(parsedError?.data || parsedError?.envelope || null);
+}
+
+async function readStreamBody(stream: any): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let settled = false;
+
+    const finish = (handler: (value?: any) => void, value?: any) => {
+      if (settled) return;
+      settled = true;
+      handler(value);
+    };
+
+    stream.on('data', (chunk: any) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+    });
+    stream.once('end', () => finish(resolve, Buffer.concat(chunks).toString('utf8')));
+    stream.once('close', () => finish(resolve, Buffer.concat(chunks).toString('utf8')));
+    stream.once('error', (error: Error) => finish(reject, error));
+  });
+}
+
+function summarizeContentForLog(content: any) {
+  if (_.isString(content)) {
+    return {
+      kind: 'text',
+      length: content.length,
+    };
+  }
+
+  if (_.isArray(content)) {
+    return {
+      kind: 'array',
+      length: content.length,
+      itemTypes: content.slice(0, 5).map((item) => {
+        if (_.isString(item)) return 'text';
+        if (_.isPlainObject(item)) return _.get(item, 'type') || 'object';
+        return typeof item;
+      }),
+    };
+  }
+
+  if (_.isPlainObject(content)) {
+    return {
+      kind: _.get(content, 'type') || 'object',
+      keys: Object.keys(content).slice(0, 5),
+    };
+  }
+
+  return {
+    kind: typeof content,
+  };
+}
+
+function logMessageSummary(mode: 'stream' | 'non-stream', model: string, messages: any[]) {
+  const list = _.isArray(messages) ? messages : [];
+  const preview = list.slice(-8).map((message, index) => ({
+    index: Math.max(list.length - 8, 0) + index,
+    role: _.get(message, 'role') || 'unknown',
+    content: summarizeContentForLog(_.get(message, 'content')),
+  }));
+
+  logger.info(`[CHAT ${mode.toUpperCase()}] ${JSON.stringify({
+    model,
+    messageCount: list.length,
+    omittedMessages: Math.max(list.length - preview.length, 0),
+    messages: preview,
+  })}`);
+}
+
 async function getIPAddress() {
   if (ipAddress) return ipAddress;
   const result = await axios.get('https://chat.deepseek.com/', {
@@ -80,7 +210,7 @@ async function requestToken(refreshToken: string) {
       accessTokenRequestQueueMap[refreshToken].push(resolve)
     );
   accessTokenRequestQueueMap[refreshToken] = [];
-  logger.info(`Refresh token: ${refreshToken}`);
+  logger.info(`Refreshing token: ${maskToken(refreshToken)}`);
   const result = await (async () => {
     const result = await axios.get(
       "https://chat.deepseek.com/api/v0/users/current",
@@ -234,17 +364,29 @@ async function createCompletion(
   messages: any[],
   refreshToken: string,
   refConvId?: string,
-  retryCount = 0
-) {
+  retryCount = 0,
+  auditContext?: AuditContext
+): Promise<any> {
   return (async () => {
-    logger.info(messages);
+    logMessageSummary('non-stream', model, messages);
 
     // 如果引用对话ID不正确则重置引用
-    if (!/[0-9a-z\-]{36}@[0-9]+/.test(refConvId))
-      refConvId = null;
+    if (!isConversationId(refConvId))
+      refConvId = undefined;
 
     // 消息预处理
-    const prompt = refConvId ? messagesPrepare([messages[messages.length - 1]]) : messagesPrepare(messages);
+    const promptMessages = getPromptMessages(messages, refConvId);
+    const prompt = messagesPrepare(promptMessages);
+    appendAuditEvent(auditContext, 'deepseek.prompt_prepared', {
+      mode: 'non-stream',
+      model,
+      refConvId,
+      messages,
+      messageSummary: summarizeMessages(messages),
+      promptMessages,
+      promptMessageSummary: summarizeMessages(promptMessages),
+      prompt,
+    });
 
     // 解析引用对话ID
     const parts = refConvId?.split('@') || [];
@@ -289,6 +431,13 @@ async function createCompletion(
       search_enabled: isSearchModel,
       preempt: false
     };
+    appendAuditEvent(auditContext, 'deepseek.request', {
+      mode: 'non-stream',
+      model,
+      refConvId,
+      sessionId,
+      payload,
+    });
 
     const result = await axios.post(
       "https://chat.deepseek.com/api/v0/chat/completion",
@@ -311,34 +460,230 @@ async function createCompletion(
     await sendEvents(sessionId, refreshToken);
 
     if (result.headers["content-type"].indexOf("text/event-stream") == -1) {
-      result.data.on("data", buffer => logger.error(buffer.toString()));
-      throw new APIException(
-        EX.API_REQUEST_FAILED,
-        `Stream response Content-Type invalid: ${result.headers["content-type"]}`
-      );
+      const bodyText = await readStreamBody(result.data);
+      const parsedError = parseDeepSeekErrorBody(bodyText);
+      appendAuditEvent(auditContext, 'deepseek.invalid_content_type', {
+        mode: 'non-stream',
+        contentType: result.headers['content-type'],
+        bodyText,
+        parsedError,
+      });
+      logger.error(`Invalid response Content-Type: ${result.headers["content-type"]}`);
+      if (bodyText) logger.error(bodyText);
+      throw createInvalidStreamResponseError(result.headers["content-type"], parsedError);
     }
 
     const streamStartTime = util.timestamp();
     // 接收流为输出文本
     const promptTokens = calculateMessagesTokens(messages);
     const answer = await receiveStream(model, result.data, sessionId, promptTokens);
+    appendAuditEvent(auditContext, 'deepseek.response', {
+      mode: 'non-stream',
+      sessionId,
+      response: answer,
+    });
+    const answerContent = String(_.get(answer, 'choices[0].message.content') || '').trim();
+    const answerReasoning = String(_.get(answer, 'choices[0].message.reasoning_content') || '').trim();
+    if (!answerContent && !answerReasoning) {
+      appendAuditEvent(auditContext, 'deepseek.empty_response', {
+        mode: 'non-stream',
+        sessionId,
+        response: answer,
+      });
+      if (isConversationId(answer.id)) {
+        appendAuditEvent(auditContext, 'deepseek.regenerate.from_empty_response', {
+          mode: 'non-stream',
+          sessionId,
+          sourceConversationId: answer.id,
+        });
+        return regenerateCompletion(
+          model,
+          refreshToken,
+          answer.id,
+          promptTokens,
+          0,
+          auditContext,
+          {
+            thinkingEnabled: isThinkingModel,
+            searchEnabled: isSearchModel,
+          }
+        );
+      }
+      throw new APIException(EX.API_REQUEST_FAILED, 'DeepSeek returned empty completion');
+    }
     logger.success(
       `Stream has completed transfer ${util.timestamp() - streamStartTime}ms`
     );
 
     return answer;
-  })().catch((err) => {
+  })().catch((err: any) => {
+    appendAuditEvent(auditContext, 'deepseek.error', {
+      mode: 'non-stream',
+      refConvId,
+      retryCount,
+      error: serializeError(err),
+    });
+    // 🌟 核心改进：处理 404 会话不存在或 Token 不匹配的情况
+    if (refConvId && err.response?.status === 404) {
+        logger.warn(`DeepSeek session ${refConvId} not found (404), retrying with a fresh session...`);
+        return createCompletion(
+            model,
+            messages,
+            refreshToken,
+            undefined, // 丢弃失效的会话 ID
+            retryCount, // 保持重试计数
+            auditContext
+        );
+    }
+
+    if (refConvId && isInvalidMessageIdPayload(err)) {
+      throw err;
+    }
+
     if (retryCount < MAX_RETRY_COUNT) {
       logger.error(`Stream response error: ${err.stack}`);
       logger.warn(`Try again after ${RETRY_DELAY / 1000}s...`);
-      return (async () => {
+      return (async (): Promise<any> => {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
         return createCompletion(
           model,
           messages,
           refreshToken,
           refConvId,
-          retryCount + 1
+          retryCount + 1,
+          auditContext
+        );
+      })();
+    }
+    throw err;
+  });
+}
+
+async function regenerateCompletion(
+  model = MODEL_NAME,
+  refreshToken: string,
+  refConvId: string,
+  promptTokens = 1,
+  retryCount = 0,
+  auditContext?: AuditContext,
+  options: { thinkingEnabled?: boolean, searchEnabled?: boolean } = {}
+): Promise<any> {
+  return (async () => {
+    const conversation = splitConversationId(refConvId);
+    if (!conversation)
+      throw new APIException(EX.API_REQUEST_FAILED, 'Invalid conversation id for regenerate');
+
+    const isSearchModel = options.searchEnabled ?? model.includes('search');
+    const isThinkingModel = options.thinkingEnabled ?? (model.includes('think') || model.includes('r1'));
+
+    if (isThinkingModel) {
+      const thinkingQuota = await getThinkingQuota(refreshToken);
+      if (thinkingQuota <= 0) {
+        throw new APIException(EX.API_REQUEST_FAILED, '深度思考配额不足');
+      }
+    }
+
+    const challengeResponse = await getChallengeResponse(refreshToken, '/api/v0/chat/regenerate');
+    const challenge = await answerChallenge(challengeResponse, '/api/v0/chat/regenerate');
+    logger.info(`插冷鸡: ${challenge}`);
+
+    const token = await acquireToken(refreshToken);
+    const payload = {
+      chat_session_id: conversation.sessionId,
+      child_message_id: conversation.messageId,
+      search_enabled: isSearchModel,
+      thinking_enabled: isThinkingModel,
+      user_options: null,
+    };
+    appendAuditEvent(auditContext, 'deepseek.regenerate.request', {
+      model,
+      refConvId,
+      promptTokens,
+      payload,
+    });
+
+    const result = await axios.post(
+      'https://chat.deepseek.com/api/v0/chat/regenerate',
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...FAKE_HEADERS,
+          Cookie: generateCookie(),
+          'X-Ds-Pow-Response': challenge,
+        },
+        timeout: 120000,
+        validateStatus: () => true,
+        responseType: 'stream',
+      }
+    );
+
+    await sendEvents(conversation.sessionId, refreshToken);
+
+    const contentType = String(result.headers['content-type'] || '');
+    if (!contentType.includes('text/event-stream')) {
+      const bodyText = await readStreamBody(result.data);
+      const parsedError = parseDeepSeekErrorBody(bodyText);
+      appendAuditEvent(auditContext, 'deepseek.regenerate.invalid_content_type', {
+        contentType,
+        bodyText,
+        parsedError,
+        refConvId,
+      });
+      logger.error(`Invalid regenerate response Content-Type: ${contentType}`);
+      if (bodyText) logger.error(bodyText);
+      throw createInvalidStreamResponseError(contentType, parsedError);
+    }
+
+    const streamStartTime = util.timestamp();
+    const answer = await receiveStream(model, result.data, conversation.sessionId, promptTokens);
+    appendAuditEvent(auditContext, 'deepseek.regenerate.response', {
+      model,
+      refConvId,
+      response: answer,
+    });
+
+    const answerContent = String(_.get(answer, 'choices[0].message.content') || '').trim();
+    const answerReasoning = String(_.get(answer, 'choices[0].message.reasoning_content') || '').trim();
+    if (!answerContent && !answerReasoning) {
+      appendAuditEvent(auditContext, 'deepseek.regenerate.empty_response', {
+        model,
+        refConvId,
+        response: answer,
+      });
+      throw new APIException(EX.API_REQUEST_FAILED, 'DeepSeek regenerate returned empty completion');
+    }
+
+    logger.success(
+      `Regenerate stream has completed transfer ${util.timestamp() - streamStartTime}ms`
+    );
+
+    return answer;
+  })().catch((err: any) => {
+    appendAuditEvent(auditContext, 'deepseek.regenerate.error', {
+      model,
+      refConvId,
+      retryCount,
+      error: serializeError(err),
+    });
+
+    if (err.response?.status === 404 || isInvalidMessageIdPayload(err)) {
+      throw err;
+    }
+
+    if (retryCount < MAX_RETRY_COUNT) {
+      logger.error(`Regenerate response error: ${err.stack}`);
+      logger.warn(`Try regenerate again after ${RETRY_DELAY / 1000}s...`);
+      return (async (): Promise<any> => {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+        return regenerateCompletion(
+          model,
+          refreshToken,
+          refConvId,
+          promptTokens,
+          retryCount + 1,
+          auditContext,
+          options,
         );
       })();
     }
@@ -360,17 +705,29 @@ async function createCompletionStream(
   messages: any[],
   refreshToken: string,
   refConvId?: string,
-  retryCount = 0
-) {
+  retryCount = 0,
+  auditContext?: AuditContext
+): Promise<any> {
   return (async () => {
-    logger.info(messages);
+    logMessageSummary('stream', model, messages);
 
     // 如果引用对话ID不正确则重置引用
-    if (!/[0-9a-z\-]{36}@[0-9]+/.test(refConvId))
-      refConvId = null;
+    if (!isConversationId(refConvId))
+      refConvId = undefined;
 
     // 消息预处理
-    const prompt = refConvId ? messagesPrepare([messages[messages.length - 1]]) : messagesPrepare(messages);
+    const promptMessages = getPromptMessages(messages, refConvId);
+    const prompt = messagesPrepare(promptMessages);
+    appendAuditEvent(auditContext, 'deepseek.prompt_prepared', {
+      mode: 'stream',
+      model,
+      refConvId,
+      messages,
+      messageSummary: summarizeMessages(messages),
+      promptMessages,
+      promptMessageSummary: summarizeMessages(promptMessages),
+      prompt,
+    });
 
     // 解析引用对话ID
     const parts = refConvId?.split('@') || [];
@@ -397,18 +754,27 @@ async function createCompletionStream(
     // 请求流
     const token = await acquireToken(refreshToken);
 
+    const payload = {
+      chat_session_id: sessionId,
+      parent_message_id: refParentMsgId ? parseInt(refParentMsgId) : null,
+      model_type: isExpertModel ? "expert" : "default",
+      prompt,
+      ref_file_ids: [],
+      thinking_enabled: isThinkingModel,
+      search_enabled: isSearchModel,
+      preempt: false
+    };
+    appendAuditEvent(auditContext, 'deepseek.request', {
+      mode: 'stream',
+      model,
+      refConvId,
+      sessionId,
+      payload,
+    });
+
     const result = await axios.post(
       "https://chat.deepseek.com/api/v0/chat/completion",
-      {
-        chat_session_id: sessionId,
-        parent_message_id: refParentMsgId ? parseInt(refParentMsgId) : null,
-        model_type: isExpertModel ? "expert" : "default",
-        prompt,
-        ref_file_ids: [],
-        thinking_enabled: isThinkingModel,
-        search_enabled: isSearchModel,
-        preempt: false
-      },
+      payload,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -426,12 +792,25 @@ async function createCompletionStream(
     await sendEvents(sessionId, refreshToken);
 
     if (result.headers["content-type"].indexOf("text/event-stream") == -1) {
+      const bodyText = await readStreamBody(result.data);
+      const parsedError = parseDeepSeekErrorBody(bodyText);
+      appendAuditEvent(auditContext, 'deepseek.invalid_content_type', {
+        mode: 'stream',
+        contentType: result.headers['content-type'],
+        bodyText,
+        parsedError,
+      });
       logger.error(
         `Invalid response Content-Type:`,
         result.headers["content-type"]
       );
-      result.data.on("data", buffer => logger.error(buffer.toString()));
+      if (bodyText) logger.error(bodyText);
+      if (refConvId && isInvalidMessageIdPayload(parsedError)) {
+        throw createInvalidStreamResponseError(result.headers["content-type"], parsedError);
+      }
       const transStream = new PassThrough();
+      const promptTokens = calculateMessagesTokens(messages);
+      const fallbackMessage = parsedError?.bizMsg || '服务暂时不可用，第三方响应错误';
       transStream.end(
         `data: ${JSON.stringify({
           id: "",
@@ -442,36 +821,70 @@ async function createCompletionStream(
               index: 0,
               delta: {
                 role: "assistant",
-                content: "服务暂时不可用，第三方响应错误",
+                content: fallbackMessage,
               },
               finish_reason: "stop",
             },
           ],
-          usage: { prompt_tokens: calculateMessagesTokens(messages), completion_tokens: 0, total_tokens: calculateMessagesTokens(messages) },
+          usage: { prompt_tokens: promptTokens, completion_tokens: 0, total_tokens: promptTokens },
           created: util.unixTimestamp(),
         })}\n\n`
       );
-      return transStream;
+      return tapStreamForAudit(transStream, auditContext, 'deepseek.stream.response', () => ({
+        mode: 'stream',
+        sessionId,
+        fallback: true,
+      }));
     }
+    const promptTokens = calculateMessagesTokens(messages);
     const streamStartTime = util.timestamp();
     // 创建转换流将消息格式转换为gpt兼容格式
-    return await createTransStream(model, result.data, sessionId, () => {
+    const stream = await createTransStream(model, result.data, sessionId, promptTokens, () => {
       logger.success(
         `Stream has completed transfer ${util.timestamp() - streamStartTime}ms`
       );
     });
-  })().catch((err) => {
+    return tapStreamForAudit(stream, auditContext, 'deepseek.stream.response', () => ({
+      mode: 'stream',
+      sessionId,
+      refConvId,
+    }));
+  })().catch((err: any) => {
+    appendAuditEvent(auditContext, 'deepseek.error', {
+      mode: 'stream',
+      refConvId,
+      retryCount,
+      error: serializeError(err),
+    });
+    // 🌟 核心改进：流式请求处理 404
+    if (refConvId && err.response?.status === 404) {
+        logger.warn(`DeepSeek session ${refConvId} not found (404), retrying stream with a fresh session...`);
+        return createCompletionStream(
+            model,
+            messages,
+            refreshToken,
+            undefined, // 丢弃失效的会话 ID
+            retryCount, // 保持重试计数
+            auditContext
+        );
+    }
+
+    if (refConvId && isInvalidMessageIdPayload(err)) {
+      throw err;
+    }
+
     if (retryCount < MAX_RETRY_COUNT) {
       logger.error(`Stream response error: ${err.stack}`);
       logger.warn(`Try again after ${RETRY_DELAY / 1000}s...`);
-      return (async () => {
+      return (async (): Promise<any> => {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
         return createCompletionStream(
           model,
           messages,
           refreshToken,
           refConvId,
-          retryCount + 1
+          retryCount + 1,
+          auditContext
         );
       })();
     }
@@ -486,19 +899,97 @@ async function createCompletionStream(
  *
  * @param messages 参考gpt系列消息格式，多轮对话请完整提供上下文
  */
-function messagesPrepare(messages: any[]): string {
-  // 处理消息内容
-  const processedMessages = messages.map(message => {
-    let text: string;
-    if (Array.isArray(message.content)) {
-      // 过滤出 type 为 "text" 的项并连接文本
-      const texts = message.content
-        .filter((item: any) => item.type === "text")
-        .map((item: any) => item.text);
-      text = texts.join('\n');
-    } else {
-      text = String(message.content);
+function stringifyMessageContent(content: any): string {
+  if (_.isNil(content)) return '';
+  if (_.isString(content)) return content;
+  const stringifyStructuredPart = (item: any): string => {
+    if (_.isString(item)) return item;
+    if (!_.isObject(item)) return '';
+
+    const type = _.get(item, 'type');
+    if (type === 'text' || type === 'input_text' || type === 'output_text') return _.get(item, 'text') || '';
+    if (type === 'message') return stringifyMessageContent(_.get(item, 'content'));
+    if (type === 'agent_message') return _.get(item, 'text') || stringifyMessageContent(_.get(item, 'content'));
+    if (type === 'reasoning') return _.get(item, 'text') || _.get(item, 'summary') || stringifyMessageContent(_.get(item, 'content'));
+    if (type === 'tool_result') return `Tool result (${_.get(item, 'tool_use_id') || 'unknown'}):\n${stringifyMessageContent(_.get(item, 'content'))}`;
+    if (type === 'tool_use') return `Assistant requested tool ${_.get(item, 'name') || 'unknown'}: ${JSON.stringify(_.get(item, 'input') || {})}`;
+    if (type === 'function_call') return `Assistant requested tool ${_.get(item, 'name') || 'unknown'}: ${_.get(item, 'arguments') || '{}'}`;
+    if (type === 'function_call_output') return `Tool result (${_.get(item, 'call_id') || 'unknown'}):\n${stringifyMessageContent(_.get(item, 'output'))}`;
+    if (type === 'custom_tool_call') return `Assistant requested tool ${_.get(item, 'name') || 'unknown'}: ${_.isString(_.get(item, 'input') ?? _.get(item, 'arguments')) ? (_.get(item, 'input') ?? _.get(item, 'arguments')) : JSON.stringify((_.get(item, 'input') ?? _.get(item, 'arguments')) || {})}`;
+    if (type === 'custom_tool_call_output') return `Tool result (${_.get(item, 'call_id') || _.get(item, 'id') || 'unknown'}):\n${stringifyMessageContent(_.get(item, 'output') ?? _.get(item, 'content'))}`;
+    if (type === 'mcp_tool_call') {
+      const server = _.get(item, 'server');
+      const name = _.get(item, 'tool') || _.get(item, 'name') || 'unknown';
+      const resultText = [
+        stringifyMessageContent(_.get(item, 'result.content')),
+        _.isNil(_.get(item, 'result.structured_content')) ? '' : JSON.stringify(_.get(item, 'result.structured_content')),
+        _.get(item, 'error.message') || '',
+      ].filter(Boolean).join('\n');
+      if (resultText || ['completed', 'failed'].includes(String(_.get(item, 'status') || '')))
+        return `Tool result (${server ? `${server}:` : ''}${name}):\n${resultText || String(_.get(item, 'status') || 'completed')}`;
+      return `Assistant requested tool ${name}: ${JSON.stringify((_.get(item, 'arguments') ?? _.get(item, 'input')) || {})}`;
     }
+    if (type === 'command_execution') {
+      const command = String(_.get(item, 'command') || '').trim();
+      const exitCode = _.has(item, 'exit_code') ? `\nExit code: ${_.get(item, 'exit_code')}` : '';
+      const aggregatedOutput = String(_.get(item, 'aggregated_output') || '').trim();
+      if (aggregatedOutput || _.has(item, 'exit_code') || ['completed', 'failed'].includes(String(_.get(item, 'status') || '')))
+        return `Tool result (command_execution):\nCommand: ${command}${exitCode}${aggregatedOutput ? `\n${aggregatedOutput}` : ''}`.trim();
+      return `Assistant requested tool shell: ${JSON.stringify({ command })}`;
+    }
+    if (type === 'file_change') {
+      const changes = _.isArray(_.get(item, 'changes'))
+        ? _.get(item, 'changes').map((change: any) => `${_.get(change, 'kind') || 'update'} ${_.get(change, 'path') || 'unknown'}`).join('\n')
+        : '';
+      const status = _.get(item, 'status');
+      return [changes ? 'Tool result (file_change):' : '', changes, status ? `status: ${status}` : ''].filter(Boolean).join('\n');
+    }
+    if (type === 'web_search') {
+      const query = _.get(item, 'query');
+      return query ? `Assistant requested tool web_search: ${JSON.stringify({ query })}` : '';
+    }
+    if (type === 'todo_list') {
+      const items = _.isArray(_.get(item, 'items'))
+        ? _.get(item, 'items').map((todo: any) => `- [${_.get(todo, 'completed') ? 'x' : ' '}] ${_.get(todo, 'text') || _.get(todo, 'content') || ''}`).filter(Boolean).join('\n')
+        : '';
+      return items ? `Todo list:\n${items}` : '';
+    }
+    if (type === 'error') return _.get(item, 'message') || '';
+
+    return _.get(item, 'text') || (_.has(item, 'content') ? stringifyMessageContent(_.get(item, 'content')) : '');
+  };
+  if (Array.isArray(content)) {
+    return content
+      .map(stringifyStructuredPart)
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (_.isObject(content)) return stringifyStructuredPart(content) || JSON.stringify(content);
+  return String(content);
+}
+
+function messageToPreparedText(message: any): string {
+  const parts = [stringifyMessageContent(message.content)].filter(Boolean);
+
+  if (Array.isArray(message.tool_calls)) {
+    for (const toolCall of message.tool_calls) {
+      const name = _.get(toolCall, 'function.name') || _.get(toolCall, 'name') || 'unknown';
+      const args = _.get(toolCall, 'function.arguments') || _.get(toolCall, 'arguments') || '{}';
+      parts.push(`Assistant requested tool ${name}: ${_.isString(args) ? args : JSON.stringify(args)}`);
+    }
+  }
+
+  if (message.role === 'tool') {
+    const toolUseId = message.tool_call_id || message.name || 'unknown';
+    return `Tool result (${toolUseId}):\n${parts.join('\n')}`;
+  }
+
+  return parts.join('\n');
+}
+
+function messagesPrepare(messages: any[]): string {
+  const processedMessages = messages.map(message => {
+    let text = messageToPreparedText(message);
     // Safely remove "FINISHED" and similar artifacts from the end of history messages
     if (text.endsWith('FINISHED')) {
       text = text.substring(0, text.length - 8).trim();
@@ -540,6 +1031,55 @@ function messagesPrepare(messages: any[]): string {
     .replace(/\!\[.+\]\(.+\)/g, "");
 }
 
+function isToolResultLikeMessage(message: any) {
+  if (!message) return false;
+  if (message.role === 'tool') return true;
+  const preparedText = messageToPreparedText(message).trim();
+  return preparedText.startsWith('Tool result (');
+}
+
+function isAssistantToolRequestMessage(message: any) {
+  if (!message || message.role !== 'assistant') return false;
+  const preparedText = messageToPreparedText(message);
+  return preparedText.includes('Assistant requested tool ');
+}
+
+function getPromptMessages(messages: any[], refConvId?: string) {
+  if (!refConvId || messages.length <= 1) return messages;
+
+  const systemMessages = messages.filter((message) => message?.role === 'system');
+  const historyMessages = messages.filter((message) => message?.role !== 'system');
+  if (!historyMessages.length) return systemMessages;
+
+  let startIndex = historyMessages.length - 1;
+  const latestMessage = historyMessages[startIndex];
+
+  if (isToolResultLikeMessage(latestMessage)) {
+    while (startIndex > 0 && isToolResultLikeMessage(historyMessages[startIndex - 1])) {
+      startIndex--;
+    }
+    if (startIndex > 0 && isAssistantToolRequestMessage(historyMessages[startIndex - 1])) {
+      startIndex--;
+    }
+    const previousUserIndex = _.findLastIndex(
+      historyMessages.slice(0, startIndex),
+      (message) => message?.role === 'user' && !isToolResultLikeMessage(message),
+    );
+    if (previousUserIndex !== -1) {
+      startIndex = previousUserIndex;
+    }
+  } else {
+    const latestUserIndex = _.findLastIndex(historyMessages, (message) => message?.role === 'user');
+    if (latestUserIndex !== -1) {
+      startIndex = latestUserIndex;
+    }
+  }
+
+  const recentMessages = historyMessages.slice(startIndex);
+  if (!systemMessages.length) return recentMessages;
+  return [...systemMessages, ...recentMessages];
+}
+
 /**
  * 检查请求结果
  *
@@ -566,6 +1106,7 @@ async function receiveStream(model: string, stream: any, refConvId?: string, pro
   let accumulatedContent = "";
   let accumulatedThinkingContent = "";
   let messageId = '';
+  let searchResults: any[] = [];
   const created = util.unixTimestamp();
   // Default to thinking mode for specific models if we are at the beginning of the stream
   let currentPath = (model.includes('think') || model.includes('r1')) ? 'thinking' : 'content';
@@ -628,9 +1169,34 @@ async function receiveStream(model: string, stream: any, refConvId?: string, pro
         if (typeof chunk.v === 'string' && chunk.v !== 'FINISHED') {
           if (currentPath === 'thinking') {
             accumulatedThinkingContent += chunk.v;
-          } else {
+          } else if (chunk.v !== 'SEARCH') {
             // Default to content for anything else
             accumulatedContent += chunk.v;
+          }
+        }
+
+        // Search results: support both legacy path and new fragments-based path
+        const isSearchResults = (chunk.p === 'response/search_results' || (chunk.p && chunk.p.endsWith('/results') && chunk.p.includes('fragments'))) && Array.isArray(chunk.v);
+        if (isSearchResults) {
+          if (chunk.o !== 'BATCH') { // Initial search results
+            if (searchResults.length === 0) {
+              searchResults = chunk.v;
+            } else {
+              searchResults = [...searchResults, ...chunk.v];
+            }
+          } else { // BATCH update for search results (title, url, etc.)
+            chunk.v.forEach((op: any) => {
+              const match = op.p.match(/\/(\d+)\/(\w+)$/);
+              if (match) {
+                const index = parseInt(match[1], 10);
+                const key = match[2];
+                if (searchResults[index]) {
+                  searchResults[index][key] = op.v;
+                } else {
+                  searchResults[index] = { [key]: op.v };
+                }
+              }
+            });
           }
         }
       } catch (err) {
@@ -639,7 +1205,7 @@ async function receiveStream(model: string, stream: any, refConvId?: string, pro
     });
 
     stream.on("data", (buffer: Buffer) => parser.feed(buffer.toString()));
-    stream.once("error", (err) => reject(err));
+    stream.once("error", (err: Error) => reject(err));
     stream.once("close", () => {
       logger.info(`[NON-STREAM] Stream closed. Content len: ${accumulatedContent.length}, Thinking len: ${accumulatedThinkingContent.length}`);
       // Debug: Log if FINISHED is ending up in content
@@ -657,6 +1223,14 @@ async function receiveStream(model: string, stream: any, refConvId?: string, pro
             role: "assistant",
             content: accumulatedContent.trim(),
             reasoning_content: accumulatedThinkingContent.trim(),
+            citations: searchResults
+              .filter(r => r.cite_index)
+              .sort((a, b) => a.cite_index - b.cite_index)
+              .map(r => ({
+                index: r.cite_index,
+                title: r.title,
+                url: r.url
+              }))
           },
           finish_reason: "stop",
         }],
@@ -678,7 +1252,7 @@ async function receiveStream(model: string, stream: any, refConvId?: string, pro
  * @param stream 消息流
  * @param endCallback 传输结束回调
  */
-async function createTransStream(model: string, stream: any, refConvId: string, endCallback?: Function) {
+async function createTransStream(model: string, stream: any, refConvId: string, promptTokens: number = 1, endCallback?: Function) {
   const { createParser } = await import("eventsource-parser");
   const isThinkingModel = model.includes('think') || model.includes('r1');
   const isSilentModel = model.includes('silent');
@@ -695,6 +1269,8 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
   let currentPath = (model.includes('think') || model.includes('r1')) ? 'thinking' : 'content';
   let searchResults: any[] = [];
   let thinkingStarted = false;
+  let accumulatedContent = "";
+  let accumulatedThinkingContent = "";
 
   const parser = createParser((event) => {
     try {
@@ -715,7 +1291,8 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
             transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta: { content: citationContent }, finish_reason: null }], created })}\n\n`);
           }
         }
-        transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], created })}\n\n`);
+        const completionTokens = calculateTokens(accumulatedContent + accumulatedThinkingContent);
+        transStream.write(`data: ${JSON.stringify({ id: `${refConvId}@${messageId}`, model, object: "chat.completion.chunk", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens }, created })}\n\n`);
         !transStream.closed && transStream.end("data: [DONE]\n\n");
         endCallback && endCallback();
         return;
@@ -744,8 +1321,11 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           else if (fragType === 'RESPONSE') currentPath = 'content';
 
           const initialContent = getFragmentInitialContent(fragment);
-          if (initialContent)
+          if (initialContent) {
             fragmentInitialDeltas.push({ content: initialContent, path: currentPath === 'thinking' ? 'thinking' : 'content' });
+            if (currentPath === 'thinking') accumulatedThinkingContent += initialContent;
+            else accumulatedContent += initialContent;
+          }
         }
       }
 
@@ -847,6 +1427,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           // If p is response/fragments/-1/content, keep current sticky path
         }
         if (currentPath === 'thinking') {
+          accumulatedThinkingContent += content;
           if (isSilentModel) return;
           if (isFoldModel) {
             if (!thinkingStarted) {
@@ -860,6 +1441,7 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
           }
         } else {
           // Normal content mode
+          accumulatedContent += content;
           if (isFoldModel && thinkingStarted) {
             delta.content = `</details>${content}`;
             thinkingStarted = false;
@@ -875,8 +1457,8 @@ async function createTransStream(model: string, stream: any, refConvId: string, 
     }
   });
 
-  stream.on("data", (buffer) => parser.feed(buffer.toString()));
-  stream.once("error", (err) => {
+  stream.on("data", (buffer: Buffer) => parser.feed(buffer.toString()));
+  stream.once("error", (err: Error) => {
     logger.error(`[STREAM] Stream error: ${err}`);
     !transStream.closed && transStream.end("data: [DONE]\n\n");
   });
@@ -1404,7 +1986,7 @@ async function fetchLatestVersion(): Promise<string> {
         }
       }
     }
-  } catch (err) {
+  } catch (err: any) {
     logger.error('自动补全版本信息失败:', err.message);
   }
   return EVENT_COMMIT_ID;
@@ -1425,6 +2007,7 @@ getIPAddress().then(() => {
 export default {
   createCompletion,
   createCompletionStream,
+  regenerateCompletion,
   getTokenLiveStatus,
   tokenSplit,
   fetchAppVersion: fetchLatestVersion,

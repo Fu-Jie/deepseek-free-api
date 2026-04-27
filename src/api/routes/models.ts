@@ -1,5 +1,25 @@
 import _ from 'lodash';
 
+const MODEL_IDS = [
+    'deepseek',
+    'deepseek-chat',
+    'deepseek-think',
+    'deepseek-r1',
+    'deepseek-search',
+    'deepseek-expert',
+    'deepseek-expert-r1',
+    'deepseek-r1-expert',
+    'deepseek-expert-search',
+    'deepseek-expert-r1-search',
+    'deepseek-r1-expert-search',
+    'deepseek-r1-search',
+    'deepseek-think-search',
+    'deepseek-r1-silent',
+    'deepseek-search-silent',
+    'deepseek-think-fold',
+    'deepseek-r1-fold',
+];
+
 export default {
 
     prefix: '/v1',
@@ -7,83 +27,11 @@ export default {
     get: {
         '/models': async () => {
             return {
-                "data": [
-                    {
-                        "id": "deepseek",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-chat",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-think",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-r1",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-search",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-expert",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-expert-r1",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-expert-search",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-expert-r1-search",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-r1-search",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-think-search",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-r1-silent",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-search-silent",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-think-fold",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    },
-                    {
-                        "id": "deepseek-r1-fold",
-                        "object": "model",
-                        "owned_by": "deepseek-free-api"
-                    }
-                ]
+                "data": _.uniq(MODEL_IDS).map((id) => ({
+                    id,
+                    object: 'model',
+                    owned_by: 'deepseek-free-api'
+                }))
             };
         }
 

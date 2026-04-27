@@ -1,411 +1,214 @@
-# DeepSeek V4 Free Service (Continuous Maintenance)
+# DeepSeek Free API Server (Continuous Maintenance)
 
-> **⚠️ Note**: The original project `llm-red-team/deepseek-free-api` is archived. This is a **maintained fork** designed to fix protocol incompatibilities (e.g., `ERR_INVALID_CHAR` and `FINISHED` code leakage) caused by official updates, ensuring continuous availability.
->
+> **Note**: The original project `llm-red-team/deepseek-free-api` is archived. This is a **maintained fork** that keeps up with DeepSeek official protocol changes.
+
 > [!TIP]
-> **New Project Recommendation**: [MiMo Free API MCP](https://github.com/Fu-Jie/mimo-free-api-mcp), a next-generation gateway based on Xiaomi's LLM with native HTTP MCP support, is now available!
+> **New Project**: [MiMo Free API MCP](https://github.com/Fu-Jie/mimo-free-api-mcp), a next-generation gateway based on Xiaomi LLM with native HTTP MCP support!
 
-<span>[ <a href="README.md">中文</a> | English ]</span>
+<span>[ <a href="README.md">Chinese</a> | English ]</span>
 
-[![](https://img.shields.io/github/license/Fu-Jie/deepseek-free-api.svg)](LICENSE)
-![](https://img.shields.io/github/stars/Fu-Jie/deepseek-free-api.svg)
-![](https://img.shields.io/github/forks/Fu-Jie/deepseek-free-api.svg)
-![](https://img.shields.io/badge/Docker-ghcr.io/fu--jie/deepseek--free--api-blue)
+[![](https://img.shields.io/github/stars/Fu-Jie/deepseek-free-api.svg)](https://github.com/Fu-Jie/deepseek-free-api/stargazers) [![](https://img.shields.io/github/forks/Fu-Jie/deepseek-free-api.svg)](https://github.com/Fu-Jie/deepseek-free-api/network/members) [![](https://img.shields.io/badge/Docker-ghcr.io/fu--jie/deepseek--free--api-blue)](https://github.com/Fu-Jie/deepseek-free-api/pkgs/container/deepseek-free-api)
 
-# Risk Warning
+---
 
-## **Recently, we have found that some self-media guide users to deploy the source code or image of this repository to non-personal use channels and provide services publicly. This behavior may violate DeepSeek's [Terms of Use](https://chat.deepseek.com/downloads/DeepSeek%20Terms%20of%20Use.html). We hereby remind the relevant self-media and individuals to immediately stop such improper behavior. If the violation continues, DeepSeek reserves the right to pursue legal responsibility.**
+## Feature Overview
 
-Supports high-speed streaming output, multi-turn conversation, internet search, R1 deep thinking, and silent deep thinking. Zero-configuration deployment and multi-token support.
-
-## Recent Updates
-
-- **Agent Ecosystem & Multi-Protocol Enhancement** (2026-04-26): Significantly improved compatibility with Agent clients and fixed streaming output anomalies. **⚠️ Note: Due to reverse engineering limitations, tool calling is unstable and unsuited for rigorous Agent tasks. If conditions permit, we strongly recommend recharging and using the official DeepSeek API for a native experience.**
-  - **Expanded Protocol Endpoints**: Added support for OpenAI Responses API (`/v1/responses`) and Anthropic Messages API (`/messages`), deeply adapted for **Codex CLI** and **Claude Code**. Includes tool parsing, format conversion, and mapping `reasoning_content` to Anthropic thinking deltas.
-  - **Smart Session Reuse**: For clients without an explicit `conversation_id`, generates stable fingerprints from previous messages to automatically reuse the same DeepSeek session. This alleviates context bloat and session fragmentation caused by Agents sending full histories, supported by a TTL cleanup mechanism.
-  - **Streaming Protocol Fix**: Unified the handling of initial fragments nested in `v.response.fragments` under the latest SSE protocol, completely resolving the bug where initial characters of replies were lost.
-  - **Configuration Standardization**: Added automatic `.env` loading from the project root and provided a `.env.example` template for token and session configurations.
-- **DeepSeek-V4 Support** (2026-04-24): Fully adapted to the latest **DeepSeek-V4** preview release.
-  - Supports `deepseek-v4-pro` and `deepseek-v4-flash` models.
-  - Context window expanded to **1M (one million)** tokens.
-  - Optimized for Agents (e.g., Claude Code) with improved response stability.
-  - Note: Official `deepseek-chat` and `deepseek-reasoner` models will be deprecated on 2026-07-24.
-- **Expert Mode Support** (2026-04-08): Perfectly adapted to the new **"Expert Mode"** by reverse-engineering the official web protocol.
-  - Automatically injects `model_type: "expert"` parameter to trigger stronger reasoning capabilities.
-  - Resolved the `missing field chat_session_id` issue by correcting the ID extraction path.
-  - See: [DeepSeek Expert Mode Reverse Engineering Report](./REVERSE_ENGINEERING_EXPERT_MODE.md)
-- **Compatibility Fix** (2025-02-11): Resolved the `ERR_INVALID_CHAR` error triggered by DeepSeek website architecture changes.
-
-## Features
-
-### 1. Supported Model List
-
-This project dynamically injects official protocol parameters by parsing keywords in the model name. Features can be combined freely:
-
-| Model ID | Target Backend | Expert Mode | Deep Thinking | Search | Description |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| `deepseek` | **V4-Flash** | ❌ | ❌ | ❌ | Basic chat mode |
-| `deepseek-expert` | **V4-Pro** | ✅ | ❌ | ❌ | **Recommended**: Expert enhanced mode (1M context, Agent-optimized) |
-| `deepseek-r1` | **V4-Flash** | ❌ | ✅ | ❌ | Official R1 deep thinking mode |
-| `deepseek-search` | **V4-Flash** | ❌ | ❌ | ✅ | Official internet search mode |
-| `deepseek-expert-r1` | **V4-Pro** | ✅ | ✅ | ❌ | **Top Reasoning**: V4 Pro + Deep Thinking |
-| `deepseek-expert-search` | **V4-Pro** | ✅ | ❌ | ✅ | V4 Pro + Internet Search |
-| `deepseek-r1-search` | **V4-Flash** | ❌ | ✅ | ✅ | Deep Thinking + Search |
-| `deepseek-expert-r1-search` | **V4-Pro** | ✅ | ✅ | ✅ | **Ultimate**: V4 Pro + Thinking + Search |
-
-> **Mapping Logic**: No need to change your model names. The system automatically identifies: names containing `expert` call **V4-Pro**; others default to **V4-Flash**. Include `think` or `r1` for deep thinking, and `search` for internet search. Suffixes `-silent` and `-fold` are supported.
-
-### 2. Magic Triggers
-
-Trigger deep thinking in any model without changing the model name:
-- Start your prompt with `?` or `？`.
-- Include the phrase `deep thinking` or `深度思考` in your prompt.
-
-### 3. Continuous Conversation
-
-Supports native continuous conversation via `conversation_id` (using server-side memory instead of uploading full history).
-
-- **Usage**: Add `"conversation_id": "YOUR_ID"` to the request body.
-- **ID Source**: The `id` field from each API response is the `conversation_id` for the next turn.
-- **Format**: `session_id@parent_message_id`.
-- **Advantages**:
-  - **Save Bandwidth**: No need to resend full chat history.
-  - **Native Experience**: Inherits search results, thinking process, and expert state from previous turns.
-
-Here are ten more free APIs for your attention:
-
-Moonshot AI（Kimi.ai）API [kimi-free-api](https://github.com/LLM-Red-Team/kimi-free-api)
-
-GLM AI API [glm-free-api](https://github.com/LLM-Red-Team/glm-free-api)
-
-StepChat API [step-free-api](https://github.com/LLM-Red-Team/step-free-api)
-
-Qwen API [qwen-free-api](https://github.com/LLM-Red-Team/qwen-free-api)
-
-Metaso AI API [metaso-free-api](https://github.com/LLM-Red-Team/metaso-free-api)
-
-ByteDance（doubao）API [doubao-free-api](https://github.com/LLM-Red-Team/doubao-free-api)
-
-ByteDance（jimeng AI）API [jimeng-free-api](https://github.com/LLM-Red-Team/jimeng-free-api)
-
-Spark API [spark-free-api](https://github.com/LLM-Red-Team/spark-free-api)
-
-MiniMax（hailuo AI）API [hailuo-free-api](https://github.com/LLM-Red-Team/hailuo-free-api)
-
-Emohaa API [emohaa-free-api](https://github.com/LLM-Red-Team/emohaa-free-api)
+- **Multi-Protocol Endpoints**: Supports OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages APIs simultaneously
+- **MCP Service**: Built-in Streamable HTTP MCP Server with `search` tool, compatible with Cursor / Claude Desktop
+- **DeepSeek V4**: Supports V4-Flash / V4-Pro with up to **1M token** context window
+- **Web Search**: Automatically parses search results with citations
+- **Deep Thinking (R1)**: Fragment-based protocol adaptation with strict separation of thinking and response
+- **Smart Session Reuse**: Fingerprint-based automatic DeepSeek session continuation, reducing Agent history replay
+- **Multi-Token Support**: Comma-separated tokens with automatic load balancing
+- **Docker Deployment**: Supports x86_64 / ARM64, one-command startup
 
 ## Table of Contents
 
+- [Recent Updates](#recent-updates)
 - [Disclaimer](#disclaimer)
-- [Effect Examples](#effect-examples)
-- [Preparation](#preparation)
-  - [Multi-account Access](#multi-account-access)
+- [Features](#features)
+  - [1. Model List](#1-model-list)
+  - [2. Magic Triggers](#2-magic-triggers)
+  - [3. Session Reuse](#3-session-reuse)
+  - [4. MCP Service](#4-mcp-service)
+- [Code Examples](#code-examples)
+- [Access Preparation](#access-preparation)
 - [Docker Deployment](#docker-deployment)
-  - [Docker-compose Deployment](#docker-compose-deployment)
-- [Render Deployment](#render-deployment)
-- [Vercel Deployment](#vercel-deployment)
-- [Native Deployment](#native-deployment)
-- [Recommended Clients](#recommended-clients)
 - [API List](#api-list)
-  - [Chat Completion](#chat-completion)
-  - [userToken Live Check](#usertoken-live-check)
+- [Environment Variables](#environment-variables)
 - [Notes](#notes)
-  - [Nginx Reverse Proxy Optimization](#nginx-reverse-proxy-optimization)
-  - [Token Statistics](#token-statistics)
-  
+
+## Recent Updates
+
+- **2026-04-28 - MCP, Observability, and Session Persistence Hardening**: Added a Streamable HTTP MCP endpoint at `/mcp` with a built-in `search` tool for Cursor and Claude Desktop. Introduced SQLite-backed persistent session storage plus stable client/token-scoped session keys across Chat, Responses, Messages, and MCP flows. Added JSONL audit logging for requests, errors, and streamed output under `logs/audit/` with automatic sensitive-header masking. Expanded tool-call prompt/parser compatibility across XML, JSON, and DSML-style outputs, and added a multi-turn regression script covering streaming and non-streaming tool calls across all three protocols.
+- **2026-04-26 - Agent Ecosystem**: Added `/v1/responses` and `/messages` endpoints for Codex CLI and Claude Code. Tool call parsing, streaming adaptation, and thinking delta mapping. Smart session reuse via message fingerprinting. Fixed streaming character loss bug. Automatic `.env` loading.
+  - Tool calling is prompt-simulation based and **unstable**. Not for production Agent tasks. We strongly recommend the official DeepSeek API when possible.
+- **2026-04-24 - DeepSeek-V4**: V4-Pro / V4-Flash support, context to 1M tokens.
+- **2026-04-08 - Expert Mode**: Reverse-engineered official web protocol.
+- **2026-02-12 - R1 Search**: Citations appended as `**1.** [Title](link)`.
+- **2026-02-11 - Compatibility Fix**: `ERR_INVALID_CHAR` and `FINISHED` leakage resolved.
+
 ## Disclaimer
 
 > [!CAUTION]
-> **Tool Calling Warning**: Support for tool calling is implemented via prompt simulation and regex parsing. It is **unstable** and does not support the native OpenAI Tools protocol. Use for experimental purposes only.
+> **Tool Calling Warning**: Tool calling uses prompt simulation + regex. **Unstable**, no native protocol support. Experimental only.
 
-**Reverse-engineered APIs are unstable. It is recommended to use the official DeepSeek API at <https://platform.deepseek.com/> to avoid the risk of being banned.**
+> [!WARNING]
+> **Reverse-engineered APIs are unstable**. Use the [official DeepSeek API](https://platform.deepseek.com/) to avoid bans. This project is purely for research. **For personal use only. No public services or commercial use.**
 
-**This organization and individuals do not accept any donations or transactions. This project is purely for research and learning purposes!**
+## Features
 
-**For personal use only. Do not provide services or commercial use to avoid putting pressure on the official service. Use at your own risk!**
+### 1. Model List
 
-**For personal use only. Do not provide services or commercial use to avoid putting pressure on the official service. Use at your own risk!**
+System auto-injects protocol parameters by parsing model name keywords:
 
-**For personal use only. Do not provide services or commercial use to avoid putting pressure on the official service. Use at your own risk!**
+| Model ID | Backend | Expert | Thinking | Search | Description |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| `deepseek` | **V4-Flash** | | | | Basic chat |
+| `deepseek-expert` | **V4-Pro** | Yes | | | **Recommended** |
+| `deepseek-r1` | **V4-Flash** | | Yes | | R1 thinking |
+| `deepseek-search` | **V4-Flash** | | | Yes | Web search |
+| `deepseek-expert-r1` | **V4-Pro** | Yes | Yes | | Pro + Thinking |
+| `deepseek-expert-search` | **V4-Pro** | Yes | | Yes | Pro + Search |
+| `deepseek-r1-search` | **V4-Flash** | | Yes | Yes | Think + Search |
+| `deepseek-expert-r1-search` | **V4-Pro** | Yes | Yes | Yes | **Ultimate** |
 
-## Effect Examples
+> **Mapping**: `expert` > V4-Pro, else V4-Flash; `think`/`r1` > thinking; `search` > search. Supports `-silent` and `-fold` suffixes.
 
-### Identity Verification Demo
+### 2. Magic Triggers
 
-![Identity Verification](./doc/example-1.png)
+Trigger deep thinking in any model: start prompt with `?` or include `deep thinking` / `depth think`.
 
-### Multi-turn Conversation Demo
+### 3. Session Reuse
 
-![Multi-turn Conversation](./doc/example-2.png)
+SQLite-based. Auto-resumes contexts without explicit `conversation_id`.
 
-### Internet Search Demo
+**Env vars**: `CHAT_SESSION_REUSE=true`, `ANTHROPIC_SESSION_REUSE=true` (default on), `RESPONSES_SESSION_REUSE=true` (default on).
 
-![Internet Search](./doc/example-3.png)
+System fingerprints historical messages (excluding last) and matches stored sessions. Only latest turn sent to official API.
 
-## Preparation
+### 4. MCP Service
 
-Please ensure you are in mainland China or have personal computing equipment in mainland China, otherwise, the deployment may not work due to the inability to access DeepSeek.
+**2025 Streamable HTTP** standard for Cursor / Claude Desktop.
 
-Get the userToken value from [DeepSeek](https://chat.deepseek.com/)
-
-Start a conversation on DeepSeek, then open the developer tools with F12, and find the value of `userToken` in Application > LocalStorage. This will be used as the Bearer Token value for Authorization: `Authorization: Bearer TOKEN`
-
-![Get userToken](./doc/example-0.png)
-
-### Multi-account Access
-
-Currently, the same account can only have *one* output at a time. You can provide multiple userToken values and concatenate them with `,`:
-
-`Authorization: Bearer TOKEN1,TOKEN2,TOKEN3`
-
-The service will select one for each request.
-
-### Environment Variables (Optional)
-
-| Environment Variable | Required | Description                               |
-|------|------|----------------------------------|
-|  DEEP_SEEK_CHAT_AUTHORIZATION   | No    | If configured, the token will be used. If not configured, the Authorization header must be provided in the request |
-
-## Docker Deployment (Recommended)
-
-We provide automatically built Docker images supporting both `x86_64` and `ARM64` architectures.
-
-👉 **[View all available image versions](https://github.com/Fu-Jie/deepseek-free-api/pkgs/container/deepseek-free-api)**
-
-Pull the image and start the service.
-
-```shell
-docker run -it -d --init --name deepseek-free-api -p 8000:8000 -e TZ=Asia/Shanghai  vinlic/deepseek-free-api:latest
-# Or configure the token in the environment variable
-docker run -it -d --init --name deepseek-free-api -p 8000:8000 -e TZ=Asia/Shanghai -e DEEP_SEEK_CHAT_AUTHORIZATION=xxx  vinlic/deepseek-free-api:latest
+```json
+{
+  "mcpServers": {
+    "deepseek-search": {
+      "url": "http://localhost:8000/mcp",
+      "type": "http",
+      "headers": { "Authorization": "Bearer YOUR_TOKEN" }
+    }
+  }
+}
 ```
 
-View real-time service logs
+**Tool**: `search(query)` - DeepSeek web search with structured citations.
 
-```shell
-docker logs -f deepseek-free-api
+## Code Examples
+
+### OpenAI Chat
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/chat/completions   -H "Content-Type: application/json"   -H "Authorization: Bearer YOUR_TOKEN"   -d '{"model":"deepseek-expert","messages":[{"role":"user","content":"Who are you?"}],"stream":false}'
 ```
 
-Restart the service
+### OpenAI Responses (Codex CLI)
 
-```shell
-docker restart deepseek-free-api
+```bash
+curl -X POST http://127.0.0.1:8000/v1/responses   -H "Content-Type: application/json"   -H "Authorization: Bearer YOUR_TOKEN"   -d '{"model":"deepseek-expert","input":"Check Shanghai weather","stream":false}'
 ```
 
-Stop the service
+### Anthropic Messages (Claude Code)
 
-```shell
-docker stop deepseek-free-api
+```bash
+curl -X POST http://127.0.0.1:8000/v1/messages   -H "Content-Type: application/json"   -H "Authorization: Bearer YOUR_TOKEN"   -H "anthropic-version: 2023-06-01"   -d '{"model":"deepseek-expert","max_tokens":512,"messages":[{"role":"user","content":"Who are you?"}],"stream":false}'
 ```
 
-### Docker-compose Deployment
+## Access Preparation
+
+Get `userToken` from [DeepSeek](https://chat.deepseek.com/): F12 > Application > LocalStorage > `userToken` value.
+
+Multi-account: `Authorization: Bearer TOKEN1,TOKEN2,TOKEN3`
+
+## Docker Deployment
+
+[View all images](https://github.com/Fu-Jie/deepseek-free-api/pkgs/container/deepseek-free-api)
+
+### Docker Compose
 
 ```yaml
-version: '3'
-
 services:
   deepseek-free-api:
     container_name: deepseek-free-api
-    image: vinlic/deepseek-free-api:latest
+    image: ghcr.io/fu-jie/deepseek-free-api:latest
     restart: always
-    ports:
-      - "8000:8000"
-    environment:
-      - TZ=Asia/Shanghai
+    ports: ["8000:8000"]
+    environment: {TZ: Asia/Shanghai}
 ```
-
-### Render Deployment
-
-**Note: Some deployment regions may not be able to connect to DeepSeek. If the container logs show request timeout or connection failure, please switch to another region!**
-**Note: Free account container instances will automatically stop running after a period of inactivity, which may cause a delay of 50 seconds or more for the next request. It is recommended to check [Render Container Keep-alive](https://github.com/LLM-Red-Team/free-api-hub/#Render%E5%AE%B9%E5%99%A8%E4%BF%9D%E6%B4%BB)**
-
-1. Fork this project to your GitHub account.
-
-2. Visit [Render](https://dashboard.render.com/) and log in with your GitHub account.
-
-3. Build your Web Service (New+ -> Build and deploy from a Git repository -> Connect your forked project -> Select deployment region -> Select instance type as Free -> Create Web Service).
-
-4. After the build is complete, copy the assigned domain name and append the URL to access.
-
-### Vercel Deployment
-
-**Note: The request response timeout for Vercel free accounts is 10 seconds, but the interface response is usually longer, which may result in a 504 timeout error from Vercel!**
-
-Please ensure that the Node.js environment is installed.
 
 ```shell
-npm i -g vercel --registry http://registry.npmmirror.com
-vercel login
-git clone https://github.com/LLM-Red-Team/deepseek-free-api
-cd deepseek-free-api
-vercel --prod
+docker compose up -d
 ```
 
-## Native Deployment
-
-Please install the Node.js environment and configure the environment variables to ensure the node command is available.
-
-Install dependencies
+### Docker Run
 
 ```shell
-npm i
+docker run -it -d --init --name deepseek-free-api -p 8000:8000 -e TZ=Asia/Shanghai ghcr.io/fu-jie/deepseek-free-api:latest
 ```
-
-Install PM2 for process management
-
-```shell
-npm i -g pm2
-```
-
-Build the project. The dist directory indicates the build is complete.
-
-```shell
-npm run build
-```
-
-Start the service
-
-```shell
-pm2 start dist/index.js --name "deepseek-free-api"
-```
-
-View real-time service logs
-
-```shell
-pm2 logs deepseek-free-api
-```
-
-Restart the service
-
-```shell
-pm2 reload deepseek-free-api
-```
-
-Stop the service
-
-```shell
-pm2 stop deepseek-free-api
-```
-
-## Recommended Clients
-
-Use the following secondary development clients to access the free API series projects faster and easier, supporting document/image upload!
-
-LobeChat developed by [Clivia](https://github.com/Yanyutin753/lobe-chat) [https://github.com/Yanyutin753/lobe-chat](https://github.com/Yanyutin753/lobe-chat)
-
-ChatGPT Web developed by [时光@](https://github.com/SuYxh) [https://github.com/SuYxh/chatgpt-web-sea](https://github.com/SuYxh/chatgpt-web-sea)
 
 ## API List
 
-Currently supports the `/v1/chat/completions` interface compatible with openai. You can use openai or other compatible clients to access the interface, or use online services like [dify](https://dify.ai/).
+### `POST /v1/chat/completions` - OpenAI Chat
 
-### Chat Completion
+OpenAI-compatible. `Authorization: Bearer [userToken]`. Params: `model`, `messages`, `stream` (bool), `conversation_id` (optional).
 
-Chat completion interface, compatible with openai's [chat-completions-api](https://platform.openai.com/docs/guides/text-generation/chat-completions-api).
+### `POST /v1/responses` - OpenAI Responses (Codex CLI)
 
-**POST /v1/chat/completions**
+Supports `previous_response_id` session continuation.
 
-The header needs to set the Authorization header:
+### `POST /v1/messages` - Anthropic Messages (Claude Code)
 
-```
-Authorization: Bearer [userToken value]
-```
+Requires `anthropic-version: 2023-06-01` header. Thinking mapped to Anthropic thinking deltas. A compatibility alias is also exposed at `POST /anthropic/v1/messages`.
 
-Request data:
+### `GET /mcp` / `POST /mcp` - MCP Streamable HTTP
 
-```json
-{
-    // model name
-    // default: deepseek (maps to deepseek-v4-flash)
-    // expert mode: deepseek-expert (maps to deepseek-v4-pro, Recommended)
-    // deep thinking: deepseek-r1
-    // internet search: deepseek-search
-    // --- Combination Examples ---
-    // Expert + Deep Thinking: deepseek-expert-r1 (V4-Pro + Reasoning)
-    // Expert + Search: deepseek-expert-search (V4-Pro + Search)
-    // Expert + Thinking + Search: deepseek-expert-r1-search (Full Pro)
-    "model": "deepseek",
-    // default multi-turn conversation is implemented based on message merging, which may lead to reduced capabilities in some scenarios and is limited by the maximum token number per round
-    // if you want to get the native multi-turn conversation experience, you can pass in the id obtained from the previous round of messages to continue the context
-    // "conversation_id": "50207e56-747e-4800-9068-c6fd618374ee@2",
-    "messages": [
-        {
-            "role": "user",
-            "content": "Who are you?"
-        }
-    ],
-    // if using streaming response, set to true, default is false
-    "stream": false
-}
-```
+MCP endpoint with `search` tool. Streamable HTTP clients will use both GET and POST on the same endpoint.
 
-Response data:
+### `POST /token/check` - Token Live Check
 
-```json
-{
-    "id": "50207e56-747e-4800-9068-c6fd618374ee@2",
-    "model": "deepseek",
-    "object": "chat.completion",
-    "choices": [
-        {
-            "index": 0,
-            "message": {
-                "role": "assistant",
-                "content": "Greetings! I'm DeepSeek-V3, an artificial intelligence assistant created by DeepSeek. I'm at your service and would be delighted to assist you with any inquiries or tasks you may have."
-            },
-            "finish_reason": "stop"
-        }
-    ],
-    "usage": {
-        "prompt_tokens": 1,
-        "completion_tokens": 1,
-        "total_tokens": 2
-    },
-    "created": 1715061432
-}
-```
+`{"token":"..."}` returns `{"live":true/false}`. Min 10min interval.
 
-### userToken Live Check
+### `GET /v1/models` - Model List
 
-Check if the userToken is alive. If alive, live is true; otherwise, it is false. Please do not call this interface frequently (less than 10 minutes).
+Returns available model IDs.
 
-**POST /token/check**
+## Environment Variables
 
-Request data:
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `DEEP_SEEK_CHAT_AUTHORIZATION` | (empty) | Comma-separated userTokens. If set, no Authorization header needed |
+| `SERVER_PORT` | 8000 | Server port |
+| `CHAT_SESSION_REUSE` | true | Enable Chat session reuse |
+| `CHAT_SESSION_TTL` | 604800000 | Chat session TTL (ms), 7 days |
+| `ANTHROPIC_SESSION_REUSE` | true | Enable Anthropic session reuse |
+| `ANTHROPIC_SESSION_TTL` | 604800000 | Anthropic session TTL (ms) |
+| `RESPONSES_SESSION_REUSE` | true | Enable Responses session reuse |
+| `RESPONSES_SESSION_TTL` | 604800000 | Responses session TTL (ms) |
 
-```json
-{
-    "token": "eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-Response data:
-
-```json
-{
-    "live": true
-}
-```
+See `.env.example` for reference.
 
 ## Notes
 
-### Nginx Reverse Proxy Optimization
-
-If you are using Nginx to reverse proxy deepseek-free-api, please add the following configuration items to optimize the streaming output effect and improve the experience.
+### Nginx Reverse Proxy
 
 ```nginx
-# Disable proxy buffering. When set to off, Nginx will immediately send the client request to the backend server and immediately send the response received from the backend server back to the client.
 proxy_buffering off;
-# Enable chunked transfer encoding. Chunked transfer encoding allows the server to send data in chunks for dynamically generated content without knowing the size of the content in advance.
+proxy_cache off;
+proxy_read_timeout 300s;
 chunked_transfer_encoding on;
-# Enable TCP_NOPUSH, which tells Nginx to send data as much as possible before sending the data packet to the client. This is usually used in conjunction with sendfile to improve network efficiency.
-tcp_nopush on;
-# Enable TCP_NODELAY, which tells Nginx not to delay sending data and to send small data packets immediately. In some cases, this can reduce network latency.
-tcp_nodelay on;
-# Set the keep-alive timeout, here set to 120 seconds. If there is no further communication between the client and the server during this time, the connection will be closed.
-keepalive_timeout 120;
 ```
 
 ### Token Statistics
 
-To provide more accurate statistics for downstream applications like OpenWebUI, this project integrates `gpt-tokenizer` locally to dynamically estimate token usage based on characters. Since it is not DeepSeek's official tokenizer, there may be slight discrepancies, but it is sufficient for most statistical needs.
+See [Token Statistics docs](./docs/token_statistics.md).

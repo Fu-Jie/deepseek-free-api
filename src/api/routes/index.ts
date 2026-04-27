@@ -7,6 +7,7 @@ import token from './token.js';
 import models from './models.ts';
 import responses from './responses.ts';
 import messages, { anthropicMessages } from './messages.ts';
+import mcp from './mcp.ts';
 
 export default [
     {
@@ -28,5 +29,6 @@ export default [
     models,
     responses,
     messages,
-    anthropicMessages
+    anthropicMessages,
+    mcp
 ];

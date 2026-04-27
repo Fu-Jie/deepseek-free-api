@@ -7,5 +7,10 @@ services:
     restart: always
     ports:
       - "8000:8000"
+    # # 如果想让 .env 配置文件生效，请取消下面两行的注释
+    # env_file:
+    #   - .env
     environment:
       - TZ=Asia/Shanghai
+    volumes:
+      - ./data:/app/data  # persist SQLite session DB across container restarts

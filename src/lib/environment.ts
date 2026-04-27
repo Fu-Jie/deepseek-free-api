@@ -4,33 +4,9 @@ import fs from 'fs-extra';
 import minimist from 'minimist';
 import _ from 'lodash';
 
-function parseEnvValue(value: string) {
-    const trimmed = value.trim();
-    const quote = trimmed[0];
-    if ((quote === '"' || quote === "'") && trimmed.endsWith(quote)) {
-        const unquoted = trimmed.slice(1, -1);
-        if (quote === '"')
-            return unquoted.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t');
-        return unquoted;
-    }
-    return trimmed;
-}
+import dotenv from 'dotenv';
 
-function loadEnvFile(filePath: string) {
-    if (!fs.pathExistsSync(filePath)) return;
-    const content = fs.readFileSync(filePath).toString();
-    content.split(/\r?\n/).forEach((line) => {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) return;
-        const separatorIndex = trimmed.indexOf('=');
-        if (separatorIndex <= 0) return;
-        const key = trimmed.slice(0, separatorIndex).trim();
-        if (!key || process.env[key] !== undefined) return;
-        process.env[key] = parseEnvValue(trimmed.slice(separatorIndex + 1));
-    });
-}
-
-loadEnvFile(path.join(path.resolve(), '.env'));
+dotenv.config();
 
 const cmdArgs = minimist(process.argv.slice(2));  //获取命令行参数
 const envVars = process.env;  //获取环境变量

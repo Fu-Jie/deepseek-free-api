@@ -1,22 +1,45 @@
-FROM node:lts AS BUILD_IMAGE
+# ---------------------------------------------------------
+# Step 1: Build source
+# ---------------------------------------------------------
+FROM node:lts-alpine AS build
 
 WORKDIR /app
 
-COPY . /app
+# Install all dependencies for building
+COPY package.json yarn.lock* ./
+RUN yarn install --registry https://registry.npmmirror.com/
 
-RUN yarn install --registry https://registry.npmmirror.com/ && yarn run build
+# Copy source and build
+COPY . .
+RUN yarn run build
 
+# ---------------------------------------------------------
+# Step 2: Prepare production node_modules
+# ---------------------------------------------------------
+FROM node:lts-alpine AS prod-deps
+
+WORKDIR /app
+
+# Only install mandatory production dependencies
+COPY package.json yarn.lock* ./
+RUN yarn install --production --registry https://registry.npmmirror.com/ --prefer-offline
+
+# ---------------------------------------------------------
+# Step 3: Minimal Runtime image
+# ---------------------------------------------------------
 FROM node:lts-alpine
 
-COPY --from=BUILD_IMAGE /app/configs /app/configs
-COPY --from=BUILD_IMAGE /app/package.json /app/package.json
-COPY --from=BUILD_IMAGE /app/dist /app/dist
-COPY --from=BUILD_IMAGE /app/public /app/public
-COPY --from=BUILD_IMAGE /app/*.wasm /app/
-COPY --from=BUILD_IMAGE /app/node_modules /app/node_modules
-
 WORKDIR /app
+ENV NODE_ENV=production
+
+# Only copy build artifacts and runtime dependencies
+COPY --from=build /app/package.json ./
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/public ./public
+COPY --from=build /app/configs ./configs
+COPY --from=build /app/*.wasm ./
+COPY --from=prod-deps /app/node_modules ./node_modules
 
 EXPOSE 8000
 
-CMD ["npm", "start"]
+CMD ["node", "dist/index.js"]
