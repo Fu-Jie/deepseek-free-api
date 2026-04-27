@@ -28,9 +28,8 @@
 - [Disclaimer](#disclaimer)
 - [Features](#features)
   - [1. Model List](#1-model-list)
-  - [2. Magic Triggers](#2-magic-triggers)
-  - [3. Session Reuse](#3-session-reuse)
-  - [4. MCP Service](#4-mcp-service)
+  - [2. Session Reuse](#2-session-reuse)
+  - [3. MCP Service](#3-mcp-service)
 - [Code Examples](#code-examples)
 - [Access Preparation](#access-preparation)
 - [Docker Deployment](#docker-deployment)
@@ -73,13 +72,9 @@ System auto-injects protocol parameters by parsing model name keywords:
 | `deepseek-r1-search` | **V4-Flash** | | Yes | Yes | Think + Search |
 | `deepseek-expert-r1-search` | **V4-Pro** | Yes | Yes | Yes | **Ultimate** |
 
-> **Mapping**: `expert` > V4-Pro, else V4-Flash; `think`/`r1` > thinking; `search` > search. Supports `-silent` and `-fold` suffixes.
+> **Mapping**: `expert` > V4-Pro, else V4-Flash; `think`/`r1` > thinking; `search` > search. 
 
-### 2. Magic Triggers
-
-Trigger deep thinking in any model: start prompt with `?` or include `deep thinking` / `depth think`.
-
-### 3. Session Reuse
+### 2. Session Reuse
 
 SQLite-based. Auto-resumes contexts without explicit `conversation_id`.
 
@@ -87,7 +82,7 @@ SQLite-based. Auto-resumes contexts without explicit `conversation_id`.
 
 System fingerprints historical messages (excluding last) and matches stored sessions. Only latest turn sent to official API.
 
-### 4. MCP Service
+### 3. MCP Service
 
 **2025 Streamable HTTP** standard for Cursor / Claude Desktop.
 
