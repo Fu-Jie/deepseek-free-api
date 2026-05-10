@@ -162,13 +162,13 @@ function normalizeAnthropicMessages(messages: any[], system?: any, tools?: any[]
     return normalizedMessages;
 }
 
-function fingerprintMessages(messages: any[], _system: string, count: number) {
+function fingerprintMessages(messages: any[], _system: string, count: number, charLimit: number = 200) {
     const userContents = messages
         .filter((m: any) => _.get(m, 'role') === 'user')
         .slice(0, count)
         .map((m: any) => extractText(_.get(m, 'content')))
         .filter(Boolean)
-        .map((text: string) => text.length > 30 ? text.slice(0, 30) : text);
+        .map((text: string) => text.length > charLimit ? text.slice(0, charLimit) : text);
     return hashString(userContents.join('\n'));
 }
 
@@ -869,7 +869,7 @@ async function handleMessages(request: Request) {
     const { model, messages, system, tools, stream, conversation_id } = request.body;
     // 🌟 始终用首条消息指纹作为 token 选择种子，确保同一对话每轮选到同一个 token，
     //    避免 session key 前缀因 token 变化而查不到上一轮存储的 session
-    const selectedToken = selectTokenForSession(tokens, `${model}:${conversation_id || ''}:${fingerprintMessages(messages, extractText(system), 1)}`);
+    const selectedToken = selectTokenForSession(tokens, `${model}:${conversation_id || ''}:${fingerprintMessages(messages, extractText(system), 1, 500)}`);
     const fullMessages = normalizeAnthropicMessages(messages, system, tools);
     const prepared = getMessagesForDeepSeek(request, model, messages, system, tools, conversation_id, selectedToken);
 

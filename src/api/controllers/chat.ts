@@ -938,8 +938,9 @@ function stringifyMessageContent(content: any): string {
       return `Assistant requested tool shell: ${JSON.stringify({ command })}`;
     }
     if (type === 'file_change') {
-      const changes = _.isArray(_.get(item, 'changes'))
-        ? _.get(item, 'changes').map((change: any) => `${_.get(change, 'kind') || 'update'} ${_.get(change, 'path') || 'unknown'}`).join('\n')
+      const changesList = _.get(item, 'changes');
+      const changes = _.isArray(changesList)
+        ? (changesList as any[]).map((change: any) => `${_.get(change, 'kind') || 'update'} ${_.get(change, 'path') || 'unknown'}`).join('\n')
         : '';
       const status = _.get(item, 'status');
       return [changes ? 'Tool result (file_change):' : '', changes, status ? `status: ${status}` : ''].filter(Boolean).join('\n');
@@ -949,8 +950,9 @@ function stringifyMessageContent(content: any): string {
       return query ? `Assistant requested tool web_search: ${JSON.stringify({ query })}` : '';
     }
     if (type === 'todo_list') {
-      const items = _.isArray(_.get(item, 'items'))
-        ? _.get(item, 'items').map((todo: any) => `- [${_.get(todo, 'completed') ? 'x' : ' '}] ${_.get(todo, 'text') || _.get(todo, 'content') || ''}`).filter(Boolean).join('\n')
+      const todoItems = _.get(item, 'items');
+      const items = _.isArray(todoItems)
+        ? (todoItems as any[]).map((todo: any) => `- [${_.get(todo, 'completed') ? 'x' : ' '}] ${_.get(todo, 'text') || _.get(todo, 'content') || ''}`).filter(Boolean).join('\n')
         : '';
       return items ? `Todo list:\n${items}` : '';
     }

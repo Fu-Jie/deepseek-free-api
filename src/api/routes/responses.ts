@@ -309,13 +309,13 @@ function getLatestActionMessages(messages: any[], since = 0) {
     return toolResults.length ? toolResults : [latestUser];
 }
 
-function fingerprintMessages(messages: any[], count: number) {
+function fingerprintMessages(messages: any[], count: number, charLimit: number = 200) {
     const userContents = messages
         .filter((m: any) => _.get(m, 'role') === 'user')
         .slice(0, count)
         .map((m: any) => extractText(_.get(m, 'content')))
         .filter(Boolean)
-        .map((text: string) => text.length > 30 ? text.slice(0, 30) : text);
+        .map((text: string) => text.length > charLimit ? text.slice(0, charLimit) : text);
     return hashString(userContents.join('\n'));
 }
 
@@ -1155,7 +1155,7 @@ export default {
                 : getResponseReference(previousResponseId)?.conversationId || (isConversationId(previousResponseId) ? previousResponseId : undefined);
             const explicitReference = getResponseReference(previousResponseId);
             // 🌟 始终用首条消息指纹作为种子，确保同一对话每轮选到同一个 token
-            const selectedToken = selectTokenForSession(tokens, `${model}:${fingerprintMessages(normalizedMessages, 1)}`);
+            const selectedToken = selectTokenForSession(tokens, `${model}:${fingerprintMessages(normalizedMessages, 1, 500)}`);
             const prepared = getMessagesForDeepSeek(request, model, input, instructions, tools, explicitConversationId, selectedToken);
 
             if (!prepared.messages.length)
