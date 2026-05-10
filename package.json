@@ -1,6 +1,6 @@
 {
   "name": "deepseek-free-api",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "DeepSeek Free API Server",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
