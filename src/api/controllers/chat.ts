@@ -38,10 +38,10 @@ const FAKE_HEADERS = {
   "Sec-Fetch-Site": "same-origin",
   "User-Agent":
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-  "X-App-Version": "20241129.1",
+  "X-App-Version": "2.0.0",
   "X-Client-Locale": "zh_CN",
   "X-Client-Platform": "web",
-  "X-Client-Version": "1.7.1",
+  "X-Client-Version": "2.0.0",
 };
 let EVENT_COMMIT_ID = '6cf9c15d';
 // 当前IP地址
@@ -1971,20 +1971,59 @@ async function fetchLatestVersion(): Promise<string> {
         const jsContent = jsResponse.data.toString();
         logger.info(`成功读取 JS 文件, 长度: ${jsContent.length}`);
         
-        const appVersionMatch = jsContent.match(/appVersion\s*:\s*["'](.*?)["']/i);
-        if (appVersionMatch && appVersionMatch[1]) {
-          FAKE_HEADERS["X-App-Version"] = appVersionMatch[1];
-          logger.success(`获取 X-App-Version 成功: ${FAKE_HEADERS["X-App-Version"]}`);
+        let appVersion = '';
+        const appVersionDirectMatch = jsContent.match(/appVersion\s*:\s*["'](.*?)["']/i);
+        if (appVersionDirectMatch && appVersionDirectMatch[1]) {
+          appVersion = appVersionDirectMatch[1];
         } else {
-          logger.warn('未能从 JS 中找到 AppVersion');
+          // 尝试处理混淆后的变量引用模式，例如: let em="2.0.0",eg={...appVersion:em...}
+          const varMatch = jsContent.match(/appVersion\s*:\s*([a-zA-Z0-9_$]+)/i);
+          if (varMatch && varMatch[1]) {
+            const varName = varMatch[1];
+            const valMatch = jsContent.match(new RegExp(`(?:let|var|const)\\s+${varName}\\s*=\\s*["'](.*?)["']`));
+            if (valMatch && valMatch[1]) {
+              appVersion = valMatch[1];
+            }
+          }
         }
 
-        const clientVersionMatch = jsContent.match(/clientVersion\s*:\s*["'](.*?)["']/i) || jsContent.match(/version\s*:\s*["'](\d+\.\d+\.\d+)["']/i);
-        if (clientVersionMatch && clientVersionMatch[1]) {
-           FAKE_HEADERS["X-Client-Version"] = clientVersionMatch[1];
-           logger.success(`获取 X-Client-Version 成功: ${FAKE_HEADERS["X-Client-Version"]}`);
+        if (appVersion) {
+          FAKE_HEADERS["X-App-Version"] = appVersion;
+          logger.success(`获取 X-App-Version 成功: ${FAKE_HEADERS["X-App-Version"]}`);
         } else {
-          logger.warn('未能从 JS 中找到 ClientVersion');
+          // 兜底正则：匹配 Version = "x.y.z" 或类似结构
+          const fallbackMatch = jsContent.match(/Version\s*[:=]\s*["'](\d+\.\d+\.\d+)["']/i);
+          if (fallbackMatch && fallbackMatch[1]) {
+            FAKE_HEADERS["X-App-Version"] = fallbackMatch[1];
+            logger.success(`获取 X-App-Version (兜底) 成功: ${FAKE_HEADERS["X-App-Version"]}`);
+          } else {
+            FAKE_HEADERS["X-App-Version"] = "2.0.0";
+            logger.warn('未能从 JS 中找到 AppVersion, 使用默认值 2.0.0');
+          }
+        }
+
+        let clientVersion = '';
+        const clientVersionDirectMatch = jsContent.match(/clientVersion\s*:\s*["'](.*?)["']/i) || jsContent.match(/version\s*:\s*["'](\d+\.\d+\.\d+)["']/i);
+        if (clientVersionDirectMatch && clientVersionDirectMatch[1]) {
+          clientVersion = clientVersionDirectMatch[1];
+        } else {
+          // 尝试匹配 version: em 这种变量引用
+          const varMatch = jsContent.match(/version\s*:\s*([a-zA-Z0-9_$]+)/i);
+          if (varMatch && varMatch[1]) {
+            const varName = varMatch[1];
+            const valMatch = jsContent.match(new RegExp(`(?:let|var|const)\\s+${varName}\\s*=\\s*["'](.*?)["']`));
+            if (valMatch && valMatch[1]) {
+              clientVersion = valMatch[1];
+            }
+          }
+        }
+
+        if (clientVersion) {
+          FAKE_HEADERS["X-Client-Version"] = clientVersion;
+          logger.success(`获取 X-Client-Version 成功: ${FAKE_HEADERS["X-Client-Version"]}`);
+        } else {
+          FAKE_HEADERS["X-Client-Version"] = FAKE_HEADERS["X-App-Version"];
+          logger.info(`X-Client-Version 已自动同步为 AppVersion: ${FAKE_HEADERS["X-Client-Version"]}`);
         }
       }
     }
@@ -1998,7 +2037,7 @@ function autoUpdateVersion() {
   fetchLatestVersion();
 }
 
-util.createCronJob('0 */10 * * * *', autoUpdateVersion).start();
+util.createCronJob('0 0 */6 * * *', autoUpdateVersion).start();
 
 getIPAddress().then(() => {
   autoUpdateVersion();
